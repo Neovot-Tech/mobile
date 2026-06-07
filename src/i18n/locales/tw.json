@@ -1,0 +1,107 @@
+{
+  "common": {
+    "back": "back",
+    "next": "Next",
+    "previous": "Previous",
+    "submit": "Submit",
+    "review": "Review",
+    "complete": "Complete",
+    "verify": "Verify",
+    "edit": "edit",
+    "copy": "copy",
+    "or": "Or",
+    "stepOf": "step {{current}} of {{total}}",
+    "loading": "Loading...",
+    "error": "Something went wrong",
+    "retry": "Retry"
+  },
+  "splash": {
+    "tagline1": "Monitor vitals daily",
+    "tagline2": "Empower your doctors",
+    "subtitle": "Turn your phone into a smart health companion.",
+    "getStarted": "Get started",
+    "logIn": "Log in",
+    "cardTitle": "Ms. Quansah's Journey",
+    "cardAgeLabel": "age",
+    "cardAgeValue": "65",
+    "cardLogged": "Symptom Logged : 2:30 PM",
+    "cardQuote": "\"Noticed a funny tingling in my feet again today.\"",
+    "cardNext": "next .."
+  },
+  "userType": {
+    "title": "Select user type",
+    "subtitle": "Profiles for independent & dependent elderly people",
+    "neoCare": "Neocare",
+    "neoCareDesc": "For family members assisting their elderly relatives",
+    "neoCareCount": "20+ people registered",
+    "neoSenior": "Neosenior",
+    "neoSeniorDesc": "Senior citizens capable of keeping their own personal records",
+    "neoSeniorCount": "20+ people registered"
+  },
+  "auth": {
+    "neoCare": "Neocare",
+    "neoSenior": "Neosenior",
+    "signUpSubtitle": "Sign up with your phone number to get started as a neocare.",
+    "signInSubtitle": "Sign in and continue from where you left off.",
+    "neoSeniorSignUpSubtitle": "Sign up with your phone number to get started as a neosenior.",
+    "createWithGoogle": "Create with Google",
+    "continueWithGoogle": "Continue with Google",
+    "orSignUpWith": "Or sign up with",
+    "orSignInWith": "Or sign in with",
+    "phonePlaceholder": "(020) 865 2278",
+    "signUp": "Sign up",
+    "signIn": "Sign in",
+    "alreadyHaveAccount": "Already have an account?",
+    "dontHaveAccount": "Don't have an account?",
+    "enterOtp": "enter otp",
+    "verifyOtp": "Verify"
+  },
+  "neoCareOnboarding": {
+    "step1Title": "Lets get to know you",
+    "step1Subtitle": "As a neocare your account is the admin that monitors the neosenior's account",
+    "fullName": "Full Name",
+    "fullNamePlaceholder": "Ama ataah",
+    "liveWithElderly": "Do you live with the Elderly person?",
+    "liveWithElderlyPlaceholder": "No i come assist and leave",
+    "yourAddress": "Your address",
+    "addressPlaceholder": "GK-0886-485",
+    "step2Title": "Create the Profile For the elderly",
+    "step2Hello": "Hello, ",
+    "step2Subtitle": "We thank you for caring for the elderly, currently would need to know a bit more about them",
+    "elderlyFullName": "Elderly 's Full Name",
+    "elderlyNamePlaceholder": "Jessica Adamah",
+    "phoneNumber": "Phone number",
+    "residentialAddress": "Residential Address",
+    "primaryMedicalCondition": "Primary Medical Condition",
+    "conditionPlaceholder": "Hypertention",
+    "otherComments": "Other General comments",
+    "commentsPlaceholder": "Outside the hypertension there is also issues of diabetes and periodic episodes of forgetfulness.",
+    "tapToRecord": "Tap to record your general comments",
+    "step3Title": "Thank You for your patience",
+    "step3Hello": "Hello, ",
+    "step3Subtitle": "Use the pairing code which is also the user ID below to setup & start monitoring.",
+    "step3SubtitleAlt": "Save this code you can also find it in your profile. Share it with your loved ones so they can stay updated"
+  },
+  "neoSeniorOnboarding": {
+    "step2Title": "Thank you for prioritising your own well being",
+    "step2Subtitle": "Let us get to know who you are, just a few details like your name and others"
+  },
+  "neoSeniorHome": {
+    "title": "Wo ho te sɛn ɛnnɛ?",
+    "tapToSpeak": "Twa wo nsa ka na kasa",
+    "yesterdaySummary": "Nnora nkɔmbɔtwetwe",
+    "noSummary": "Mfatoho biara nni hɔ. Twa wo nsa ka mic no so na hwan."
+  },
+  "neoCare": {
+    "dashboard": "Dashboard",
+    "health": "Health",
+    "summary": "Summary",
+    "settings": "Settings",
+    "dashboardEmpty": "No data yet. Your NeoSenior's health updates will appear here."
+  },
+  "neoSenior": {
+    "home": "Fie",
+    "myHealth": "Me Apɔmuden",
+    "settings": "Nhyehyɛe"
+  }
+}

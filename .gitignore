@@ -7,6 +7,7 @@ node_modules/
 .expo/
 dist/
 web-build/
+.qa-dist/
 expo-env.d.ts
 
 # Native
@@ -25,12 +26,14 @@ expo-env.d.ts
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+*.log
 
 # macOS
 .DS_Store
 *.pem
 
 # local env files
+.env
 .env*.local
 
 # typescript
@@ -39,3 +42,14 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+.claude/
+.figma/
+
+designs/
+
+AGENTS.md
+brief.md
+CLAUDE.md
+HANDOVER.md
+SPLASH_BRIEF.md

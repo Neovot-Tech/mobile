@@ -1,0 +1,40 @@
+import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+
+import ElderlyProfileFlow from '../../../components/ElderlyProfileFlow';
+import { NeoSeniorOnboardingStackParamList } from '../../../navigation/types';
+import { useOnboardingStore } from '../../../store/onboarding.store';
+import {
+  selfRegisterNeoSenior,
+  NeoSeniorProfilePayload,
+} from '../../../services/onboarding.service';
+
+type Props = NativeStackScreenProps<NeoSeniorOnboardingStackParamList, 'NeoSeniorSelfReg'>;
+
+export default function NeoSeniorSelfRegScreen({ navigation }: Props) {
+  const { t } = useTranslation();
+  const { setNeoSeniorProfile, setGeneratedNeoSeniorId } = useOnboardingStore();
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (data: NeoSeniorProfilePayload) => {
+    setSubmitting(true);
+    try {
+      setNeoSeniorProfile(data);
+      const { neoSeniorId } = await selfRegisterNeoSenior(data);
+      setGeneratedNeoSeniorId(neoSeniorId);
+      navigation.navigate('NeoSeniorIdReveal', { neoSeniorId });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <ElderlyProfileFlow
+      title={t('neoSeniorOnboarding.step2Title')}
+      subtitle={t('neoSeniorOnboarding.step2Subtitle')}
+      onSubmit={handleSubmit}
+      submitting={submitting}
+    />
+  );
+}
