@@ -74,15 +74,7 @@ export default function App() {
 
   // On web: constrain to a phone-width frame centered in the browser window.
   // This prevents every component from stretching to the full desktop viewport.
-  // The zero-size recaptcha-container div is required by Firebase's RecaptchaVerifier.
-  return (
-    <View style={styles.frame}>
-      {content}
-      {Platform.OS === 'web' && (
-        <View nativeID="recaptcha-container" style={{ position: 'absolute', width: 0, height: 0 }} />
-      )}
-    </View>
-  );
+  return <View style={styles.frame}>{content}</View>;
 }
 
 const styles = StyleSheet.create({

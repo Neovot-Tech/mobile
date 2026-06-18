@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Text, StyleSheet } from 'react-native';
+import { Platform, Text, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -13,6 +13,7 @@ import PrimaryButton from '../../components/PrimaryButton';
 import { AuthStackParamList } from '../../navigation/types';
 import { Colors, FontSize, Spacing } from '../../theme';
 import { verifySeniorOtp } from '../../services/auth.service';
+import { verifySeniorOtpWeb } from '../../services/seniorWebAuth';
 import { useAuthStore } from '../../store/auth.store';
 import { getApiErrorMessage } from '../../services/http';
 
@@ -34,7 +35,9 @@ export default function OtpScreen({ route }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const result = await verifySeniorOtp({ sessionInfo: sessionInfo!, code: otp, phone });
+      const result = Platform.OS === 'web'
+        ? await verifySeniorOtpWeb(otp)
+        : await verifySeniorOtp({ sessionInfo: sessionInfo!, code: otp, phone });
       const { user, tokens, onboarding } = result;
       // Route by the senior's actual backend state, not which button they tapped:
       // already activated + linked → app; otherwise the right onboarding step.

@@ -1,4 +1,4 @@
-import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
+import { signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
 import { firebaseAuth, recaptchaReady } from './firebaseApp.web';
 import { seniorSessionCall } from './auth.service';
 import type { SeniorAuthResult } from './auth.service';
@@ -7,17 +7,15 @@ import type { SeniorAuthResult } from './auth.service';
 let _confirmation: ConfirmationResult | null = null;
 
 /**
- * Initiates phone sign-in via the Firebase JS SDK (browser-side reCAPTCHA).
- * Requires a DOM element with id="recaptcha-container" to be in the tree.
+ * Initiates phone sign-in via the Firebase JS SDK.
+ * This project uses reCAPTCHA Enterprise — initializeRecaptchaConfig (called at
+ * module load in firebaseApp.web.ts) fetches the Enterprise config so Firebase
+ * handles verification internally. Passing a RecaptchaVerifier conflicts with
+ * Enterprise mode and causes auth/error-code:-39.
  */
 export async function requestSeniorOtpWeb(phone: string): Promise<void> {
-  // Ensure the reCAPTCHA config has been fetched from Firebase before attempting
-  // phone auth. Without this, Firebase v10+ throws auth/error-code:-39.
   await recaptchaReady;
-  const verifier = new RecaptchaVerifier(firebaseAuth, 'recaptcha-container', {
-    size: 'invisible',
-  });
-  _confirmation = await signInWithPhoneNumber(firebaseAuth, phone, verifier);
+  _confirmation = await signInWithPhoneNumber(firebaseAuth, phone);
 }
 
 /** Confirms the SMS code and exchanges the Firebase ID token for a backend session. */
