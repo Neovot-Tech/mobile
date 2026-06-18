@@ -5,7 +5,6 @@ import {
   ScrollView,
   StyleSheet,
   Pressable,
-  TextInput,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
@@ -20,10 +19,11 @@ import {
   acknowledgeAlert,
   LinkedProfile,
 } from '../../services/dashboard.service';
-import { createLink } from '../../services/onboarding.service';
 import { getApiErrorMessage } from '../../services/http';
+import * as Clipboard from 'expo-clipboard';
 import { useAuthStore } from '../../store/auth.store';
 import { useSelectedSenior } from '../../store/selectedSenior.store';
+import { useCreatedSeniors, CreatedSenior } from '../../store/createdSeniors.store';
 import Screen from '../../components/Screen';
 import ProfileNudgeBanner from '../../components/ProfileNudgeBanner';
 import { useProfileNudge } from '../../hooks/useProfileNudge';
@@ -71,6 +71,15 @@ export default function NeoCaresDashboardScreen() {
     }
   }, [profiles, senior, setSenior]);
 
+  // Seniors this NeoCare created who haven't activated yet (show "share code").
+  const created = useCreatedSeniors((s) => s.created);
+  const reconcile = useCreatedSeniors((s) => s.reconcile);
+  useEffect(() => {
+    if (profiles.length) reconcile(profiles.map((p) => p.neoSeniorId));
+  }, [profiles, reconcile]);
+
+  const goAdd = () => navigation.navigate('AddSenior');
+
   return (
     <Screen
       contentContainerStyle={styles.content}
@@ -99,36 +108,53 @@ export default function NeoCaresDashboardScreen() {
           <ActivityIndicator color={Brand.primary} style={{ marginTop: Spacing['3xl'] }} />
         ) : profilesQ.isError ? (
           <ErrorRow message={getApiErrorMessage(profilesQ.error)} onRetry={() => profilesQ.refetch()} />
-        ) : profiles.length === 0 ? (
-          <LinkSeniorCard
-            onLinked={() => qc.invalidateQueries({ queryKey: ['linkedProfiles'] })}
-          />
         ) : (
           <>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips}>
-              {profiles.map((p, idx) => {
-                const active = p.userId === selected?.userId;
-                return (
-                  <Pressable
-                    key={p.userId}
-                    onPress={() => setSenior(p)}
-                    accessibilityRole="button"
-                    style={[styles.chip, active && styles.chipActive]}
-                  >
-                    {active && (
-                      <View style={[styles.chipAvatar, { backgroundColor: getAvatarColor(idx) }]}>
-                        <Text style={styles.chipAvatarText}>{getInitials(p.fullName)}</Text>
-                      </View>
-                    )}
-                    <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                      {p.fullName}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
+            {/* Created-but-not-yet-activated seniors — share the code with them */}
+            {created.length > 0 && (
+              <>
+                <Text style={styles.sectionLabel}>{t('neoCare.pendingTitle')}</Text>
+                {created.map((c) => (
+                  <PendingCreatedCard key={c.nsr} item={c} />
+                ))}
+              </>
+            )}
 
-            {selected && <SeniorPanel key={selected.userId} profile={selected} />}
+            {profiles.length > 0 ? (
+              <>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips}>
+                  {profiles.map((p, idx) => {
+                    const active = p.userId === selected?.userId;
+                    return (
+                      <Pressable
+                        key={p.userId}
+                        onPress={() => setSenior(p)}
+                        accessibilityRole="button"
+                        style={[styles.chip, active && styles.chipActive]}
+                      >
+                        {active && (
+                          <View style={[styles.chipAvatar, { backgroundColor: getAvatarColor(idx) }]}>
+                            <Text style={styles.chipAvatarText}>{getInitials(p.fullName)}</Text>
+                          </View>
+                        )}
+                        <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                          {p.fullName}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+
+                {selected && <SeniorPanel key={selected.userId} profile={selected} />}
+              </>
+            ) : created.length === 0 ? (
+              <EmptyState onAdd={goAdd} />
+            ) : null}
+
+            <Pressable style={styles.addBtn} onPress={goAdd} accessibilityRole="button">
+              <Ionicons name="add-circle-outline" size={20} color={Brand.primary} />
+              <Text style={styles.addBtnText}>{t('neoCare.addSenior')}</Text>
+            </Pressable>
           </>
         )}
     </Screen>
@@ -208,63 +234,46 @@ function SeniorPanel({ profile }: { profile: LinkedProfile }) {
   );
 }
 
-function LinkSeniorCard({ onLinked }: { onLinked: () => void }) {
+function PendingCreatedCard({ item }: { item: CreatedSenior }) {
   const { t } = useTranslation();
-  const [nsr, setNsr] = useState('');
-  const [pending, setPending] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  const linkMut = useMutation({
-    mutationFn: (code: string) => createLink(code.trim()),
-    onSuccess: () => {
-      setPending(true);
-      setNsr('');
-      onLinked();
-    },
-  });
+  const copy = async () => {
+    await Clipboard.setStringAsync(item.nsr);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
 
+  return (
+    <View style={styles.pendingCard}>
+      <View style={styles.pendingHeader}>
+        <Ionicons name="hourglass-outline" size={18} color={Brand.mutedTeal} />
+        <Text style={styles.pendingName}>{item.name}</Text>
+      </View>
+      <Text style={styles.pendingInstruction}>
+        {t('neoCare.pendingInstruction', { name: item.name })}
+      </Text>
+      <Pressable style={styles.codeBox} onPress={copy} accessibilityRole="button">
+        <Text style={styles.codeText}>{item.nsr}</Text>
+        <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={18} color={Brand.primary} />
+      </Pressable>
+      <Text style={styles.pendingHint}>{t('neoCare.pendingHint')}</Text>
+    </View>
+  );
+}
+
+function EmptyState({ onAdd }: { onAdd: () => void }) {
+  const { t } = useTranslation();
   return (
     <View style={styles.emptyCard}>
       <View style={styles.emptyIconWrap}>
-        <Ionicons name="link" size={34} color={Brand.primary} />
+        <Ionicons name="people-outline" size={34} color={Brand.primary} />
       </View>
       <Text style={styles.emptyTitle}>{t('neoCare.noLinkedTitle')}</Text>
       <Text style={styles.emptyBody}>{t('neoCare.noLinkedBody')}</Text>
-
-      <Text style={styles.inputLabel}>{t('neoCare.linkIdLabel')}</Text>
-      <TextInput
-        value={nsr}
-        onChangeText={setNsr}
-        placeholder="NSR-_____"
-        placeholderTextColor={Colors.textMuted}
-        autoCapitalize="characters"
-        autoCorrect={false}
-        style={styles.input}
-      />
-
-      {linkMut.isError && (
-        <Text style={styles.error}>{getApiErrorMessage(linkMut.error)}</Text>
-      )}
-      {pending && (
-        <View style={styles.pendingRow}>
-          <Ionicons name="information-circle-outline" size={16} color={Brand.mutedTeal} />
-          <Text style={styles.success}>{t('neoCare.linkPending')}</Text>
-        </View>
-      )}
-
-      <Pressable
-        style={[styles.linkBtn, (!nsr.trim() || linkMut.isPending) && styles.linkBtnDisabled]}
-        onPress={() => linkMut.mutate(nsr)}
-        disabled={!nsr.trim() || linkMut.isPending}
-        accessibilityRole="button"
-      >
-        {linkMut.isPending ? (
-          <ActivityIndicator color={Colors.white} />
-        ) : (
-          <>
-            <Ionicons name="paper-plane-outline" size={18} color={Colors.white} />
-            <Text style={styles.linkBtnText}>{t('neoCare.linkCta')}</Text>
-          </>
-        )}
+      <Pressable style={styles.emptyAddBtn} onPress={onAdd} accessibilityRole="button">
+        <Ionicons name="add" size={20} color={Colors.white} />
+        <Text style={styles.emptyAddText}>{t('neoCare.addSenior')}</Text>
       </Pressable>
     </View>
   );
@@ -525,4 +534,58 @@ const styles = StyleSheet.create({
   error: { fontFamily: Fonts.body, fontSize: FontSize.sm, color: Colors.error, marginTop: Spacing.sm },
   success: { fontFamily: Fonts.body, fontSize: FontSize.sm, color: Colors.success },
   retry: { fontFamily: Fonts.bodySemiBold, fontSize: FontSize.base, color: Brand.primary },
+
+  pendingCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Brand.borderWarm,
+    padding: Spacing.lg,
+    marginBottom: Spacing.sm,
+  },
+  pendingHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.xs },
+  pendingName: { fontFamily: Fonts.heading, fontSize: FontSize.lg, color: Brand.primary },
+  pendingInstruction: { fontFamily: Fonts.body, fontSize: FontSize.base, lineHeight: 22, color: Brand.bodyText },
+  codeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Brand.bgWarmCard,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Brand.borderForm,
+    borderStyle: 'dashed',
+    paddingHorizontal: Spacing.base,
+    paddingVertical: Spacing.md,
+    marginTop: Spacing.md,
+  },
+  codeText: { fontFamily: Fonts.heading, fontSize: FontSize.xl, letterSpacing: 2, color: Brand.primary },
+  pendingHint: { fontFamily: Fonts.body, fontSize: FontSize.sm, color: Brand.mutedTeal, marginTop: Spacing.sm },
+
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    minHeight: MinTapTarget.neoCare,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Brand.borderForm,
+    borderStyle: 'dashed',
+    marginTop: Spacing.lg,
+  },
+  addBtnText: { fontFamily: Fonts.bodySemiBold, fontSize: FontSize.base, color: Brand.primary },
+
+  emptyAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    minHeight: MinTapTarget.neoSenior,
+    alignSelf: 'stretch',
+    backgroundColor: Brand.primary,
+    borderRadius: BorderRadius.sm,
+    marginTop: Spacing.sm,
+  },
+  emptyAddText: { fontFamily: Fonts.bodySemiBold, fontSize: FontSize.base, color: Colors.white },
 });

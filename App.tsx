@@ -19,6 +19,7 @@ import { DMSans_400Regular, DMSans_500Medium, DMSans_700Bold } from '@expo-googl
 import RootNavigator from './src/navigation/RootNavigator';
 import BootSplashScreen from './src/screens/BootSplashScreen';
 import { useAuthStore } from './src/store/auth.store';
+import { useCreatedSeniors } from './src/store/createdSeniors.store';
 
 // Hold the native splash until fonts are ready AND the animated splash has mounted,
 // so the launch sequence plays without a white flash. BootSplashScreen hides it.
@@ -52,6 +53,7 @@ export default function App() {
   // so RootNavigator already reflects the logged-in role by the time it mounts.
   useEffect(() => {
     void useAuthStore.getState().hydrate();
+    void useCreatedSeniors.getState().hydrate();
   }, []);
 
   // Keep the native splash up until fonts are ready (return null = native splash visible).

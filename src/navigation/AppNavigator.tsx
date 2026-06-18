@@ -5,6 +5,8 @@ import NeoSeniorTabNavigator from './NeoSeniorTabNavigator';
 import NeoCareTabNavigator from './NeoCareTabNavigator';
 import HealthLogEntryScreen from '../screens/shared/HealthLogEntryScreen';
 import EditProfileScreen from '../screens/shared/EditProfileScreen';
+import AddSeniorScreen from '../screens/neocare/AddSeniorScreen';
+import CreateSeniorScreen from '../screens/neocare/CreateSeniorScreen';
 import { NeoSeniorAppStackParamList, NeoCareAppStackParamList } from './types';
 
 const NeoSeniorStack = createNativeStackNavigator<NeoSeniorAppStackParamList>();
@@ -29,6 +31,8 @@ export function NeoCareAppNavigator() {
       <NeoCareStack.Screen name="Tabs" component={NeoCareTabNavigator} />
       <NeoCareStack.Screen name="HealthLogEntry" component={HealthLogEntryScreen} />
       <NeoCareStack.Screen name="EditProfile" component={EditProfileScreen} />
+      <NeoCareStack.Screen name="AddSenior" component={AddSeniorScreen} />
+      <NeoCareStack.Screen name="CreateSenior" component={CreateSeniorScreen} />
     </NeoCareStack.Navigator>
   );
 }

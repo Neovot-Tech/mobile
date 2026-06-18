@@ -196,7 +196,27 @@
     "alertsTitle": "Alerts",
     "noAlerts": "No alerts right now.",
     "acknowledge": "Acknowledge",
-    "never": "—"
+    "never": "—",
+    "addSenior": "Add a NeoSenior",
+    "pendingTitle": "Waiting to be set up",
+    "pendingInstruction": "Ask {{name}} to install Neovot, sign up on their phone, and enter this code:",
+    "pendingHint": "They'll appear here once they've set up their device."
+  },
+  "neoCareLink": {
+    "title": "Set up monitoring",
+    "subtitle": "Link an existing NeoSenior, or create a profile for a new one.",
+    "haveCodeTitle": "Already have a NeoSenior ID?",
+    "haveCodeHint": "If your relative set up their own profile, enter the ID they shared to start monitoring.",
+    "codeLabel": "NeoSenior ID",
+    "codePlaceholder": "NSR-XXXXX",
+    "linkCta": "Link & monitor",
+    "linkPending": "Request sent — they'll approve it on their device.",
+    "or": "or",
+    "createTitle": "Set up a new NeoSenior",
+    "createHint": "Create a profile for your relative, then give them the code to set up their own device.",
+    "createCta": "Create a profile",
+    "invalidCode": "We couldn't find that NeoSenior ID. Please check and try again.",
+    "addTitle": "Add a NeoSenior"
   },
   "neoCareHealth": {
     "title": "Health",

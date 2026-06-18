@@ -134,7 +134,7 @@ export default function SignUpScreen({ navigation, route }: Props) {
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>{t('auth.dontHaveAccount')} </Text>
+          <Text style={styles.footerText}>{t('auth.alreadyHaveAccount')} </Text>
           <Pressable
             onPress={() => navigation.navigate('SignIn', { role })}
             accessibilityRole="link"

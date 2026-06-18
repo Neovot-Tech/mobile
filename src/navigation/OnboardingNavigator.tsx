@@ -3,7 +3,6 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import NeoCareProfileStep1Screen from '../screens/onboarding/neocare/NeoCareProfileStep1Screen';
 import NeoCareProfileStep2Screen from '../screens/onboarding/neocare/NeoCareProfileStep2Screen';
-import NeoCareProfileStep3Screen from '../screens/onboarding/neocare/NeoCareProfileStep3Screen';
 import NeoSeniorSelfRegScreen from '../screens/onboarding/neosenior/NeoSeniorSelfRegScreen';
 import NeoSeniorIdRevealScreen from '../screens/onboarding/neosenior/NeoSeniorIdRevealScreen';
 import NeoSeniorActivateScreen from '../screens/onboarding/neosenior/NeoSeniorActivateScreen';
@@ -23,7 +22,6 @@ export function NeoCareOnboardingNavigator() {
     <NeoCareStack.Navigator screenOptions={{ headerShown: false }}>
       <NeoCareStack.Screen name="NeoCareProfileStep1" component={NeoCareProfileStep1Screen} />
       <NeoCareStack.Screen name="NeoCareProfileStep2" component={NeoCareProfileStep2Screen} />
-      <NeoCareStack.Screen name="NeoCareProfileStep3" component={NeoCareProfileStep3Screen} />
     </NeoCareStack.Navigator>
   );
 }

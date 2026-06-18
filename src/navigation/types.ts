@@ -15,10 +15,10 @@ export type AuthStackParamList = {
 };
 
 // NeoCare onboarding stack
+// Step1 = link-or-create choice; Step2 = new-senior profile form.
 export type NeoCareOnboardingStackParamList = {
   NeoCareProfileStep1: undefined;
   NeoCareProfileStep2: undefined;
-  NeoCareProfileStep3: { neoSeniorId: string };
 };
 
 // NeoSenior onboarding stack
@@ -60,6 +60,8 @@ export type NeoCareAppStackParamList = {
   HealthLogEntry: { logId: string };
   VitalTrend: { userId: string; vitalType: VitalType };
   EditProfile: { nsrId: string };
+  AddSenior: undefined; // link-or-create choice
+  CreateSenior: undefined; // new-senior profile form
 };
 
 // Root stack
