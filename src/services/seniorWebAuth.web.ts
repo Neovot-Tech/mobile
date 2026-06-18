@@ -1,13 +1,27 @@
-import { signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
+import {
+  signInWithPhoneNumber,
+  initializeRecaptchaConfig,
+  ConfirmationResult,
+} from 'firebase/auth';
 import { firebaseAuth } from './firebaseApp.web';
 import { seniorSessionCall } from './auth.service';
 import type { SeniorAuthResult } from './auth.service';
 
 let _confirmation: ConfirmationResult | null = null;
+let _recaptchaReady = false;
 
-// App Check (reCAPTCHA Enterprise) is initialized in firebaseApp.web.ts — it
-// authenticates the request silently, so no RecaptchaVerifier widget is needed here.
+// Registers the reCAPTCHA Enterprise config from App Check so that
+// signInWithPhoneNumber can use the App Check token instead of a v2 widget.
+// Only needs to run once per session.
+async function ensureRecaptchaReady(): Promise<void> {
+  if (_recaptchaReady) return;
+  await initializeRecaptchaConfig(firebaseAuth);
+  _recaptchaReady = true;
+}
+
 export async function requestSeniorOtpWeb(phone: string): Promise<void> {
+  await ensureRecaptchaReady();
+  // App Check Enterprise token is attached automatically — no RecaptchaVerifier needed.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   _confirmation = await (signInWithPhoneNumber as any)(firebaseAuth, phone);
 }
