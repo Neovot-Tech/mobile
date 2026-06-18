@@ -1,6 +1,7 @@
 import {
   signInWithPhoneNumber,
   initializeRecaptchaConfig,
+  RecaptchaVerifier,
   ConfirmationResult,
 } from 'firebase/auth';
 import { firebaseAuth } from './firebaseApp.web';
@@ -8,22 +9,35 @@ import { seniorSessionCall } from './auth.service';
 import type { SeniorAuthResult } from './auth.service';
 
 let _confirmation: ConfirmationResult | null = null;
-let _recaptchaReady = false;
+let _recaptchaConfigured = false;
 
-// Registers the reCAPTCHA Enterprise config from App Check so that
-// signInWithPhoneNumber can use the App Check token instead of a v2 widget.
-// Only needs to run once per session.
-async function ensureRecaptchaReady(): Promise<void> {
-  if (_recaptchaReady) return;
-  await initializeRecaptchaConfig(firebaseAuth);
-  _recaptchaReady = true;
+function ensureContainer(): void {
+  if (document.getElementById('recaptcha-container')) return;
+  const div = document.createElement('div');
+  div.id = 'recaptcha-container';
+  document.body.appendChild(div);
+}
+
+// Registers reCAPTCHA Enterprise from App Check onto the auth instance.
+// After this, invisible RecaptchaVerifier uses Enterprise scoring (no user
+// interaction) instead of standard v2 bot detection.
+async function ensureEnterpriseConfig(): Promise<void> {
+  if (_recaptchaConfigured) return;
+  try {
+    await initializeRecaptchaConfig(firebaseAuth);
+  } catch {
+    // Falls back to standard invisible reCAPTCHA if Enterprise isn't available.
+  }
+  _recaptchaConfigured = true;
 }
 
 export async function requestSeniorOtpWeb(phone: string): Promise<void> {
-  await ensureRecaptchaReady();
-  // App Check Enterprise token is attached automatically — no RecaptchaVerifier needed.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  _confirmation = await (signInWithPhoneNumber as any)(firebaseAuth, phone);
+  ensureContainer();
+  await ensureEnterpriseConfig();
+  const verifier = new RecaptchaVerifier(firebaseAuth, 'recaptcha-container', {
+    size: 'invisible',
+  });
+  _confirmation = await signInWithPhoneNumber(firebaseAuth, phone, verifier);
 }
 
 export async function verifySeniorOtpWeb(code: string): Promise<SeniorAuthResult> {
