@@ -74,8 +74,8 @@ export default function ScreenShell({
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: Colors.background },
-  fullBleedRoot: { flex: 1, backgroundColor: AUTH_BG },
+  safe: { flex: 1, backgroundColor: Colors.background, overflow: 'hidden' },
+  fullBleedRoot: { flex: 1, backgroundColor: AUTH_BG, overflow: 'hidden' },
 
   // Standard topographic rule: 460×570, cover, right: 0
   topographic: {

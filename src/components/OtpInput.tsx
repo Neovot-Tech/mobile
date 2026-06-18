@@ -53,6 +53,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', gap: Spacing.sm },
   box: {
     flex: 1,
+    minWidth: 0,
     minHeight: MinTapTarget.neoSenior,
     borderWidth: 1,
     borderColor: Colors.border,

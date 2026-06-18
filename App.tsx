@@ -1,6 +1,7 @@
 import './src/i18n';
 
 import React, { useEffect, useState } from 'react';
+import { Platform, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -58,12 +59,7 @@ export default function App() {
     return null;
   }
 
-  // Play the branded launch animation once, before any auth/role navigation.
-  if (!splashDone) {
-    return <BootSplashScreen onFinish={() => setSplashDone(true)} />;
-  }
-
-  return (
+  const content = splashDone ? (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <QueryClientProvider client={queryClient}>
         <NavigationContainer>
@@ -72,5 +68,29 @@ export default function App() {
         </NavigationContainer>
       </QueryClientProvider>
     </SafeAreaProvider>
+  ) : (
+    <BootSplashScreen onFinish={() => setSplashDone(true)} />
   );
+
+  // On web: constrain to a phone-width frame centered in the browser window.
+  // This prevents every component from stretching to the full desktop viewport.
+  return <View style={styles.frame}>{content}</View>;
 }
+
+const styles = StyleSheet.create({
+  frame: Platform.select({
+    // #root is a row flex container on web. alignSelf:'center' would collapse height
+    // to content size (0, because BootSplashScreen is position:absolute).
+    // Instead: explicit height:'100%' fills the row's cross-axis; margin:auto centers
+    // the capped-430px column within the full browser width on desktop.
+    web: {
+      width: '100%',
+      maxWidth: 430,
+      height: '100%',
+      marginLeft: 'auto' as any,
+      marginRight: 'auto' as any,
+      overflow: 'hidden',
+    } as object,
+    default: { flex: 1 },
+  }),
+});
