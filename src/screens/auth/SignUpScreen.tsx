@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Platform, View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -16,7 +16,6 @@ import {
   loginNeoCare,
   requestSeniorOtp,
 } from '../../services/auth.service';
-import { requestSeniorOtpWeb } from '../../services/seniorWebAuth';
 import { useAuthStore } from '../../store/auth.store';
 import { getApiErrorMessage } from '../../services/http';
 
@@ -62,13 +61,8 @@ export default function SignUpScreen({ navigation, route }: Props) {
     setError(null);
     try {
       const ph = phone.trim();
-      if (Platform.OS === 'web') {
-        await requestSeniorOtpWeb(ph);
-        navigation.navigate('Otp', { phone: ph, mode: 'signup' });
-      } else {
-        const { sessionInfo } = await requestSeniorOtp(ph);
-        navigation.navigate('Otp', { phone: ph, sessionInfo, mode: 'signup' });
-      }
+      const { sessionInfo } = await requestSeniorOtp(ph);
+      navigation.navigate('Otp', { phone: ph, sessionInfo, mode: 'signup' });
     } catch (err) {
       setError(getApiErrorMessage(err));
     } finally {

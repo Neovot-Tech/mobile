@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Platform, View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -12,7 +12,6 @@ import PrimaryButton from '../../components/PrimaryButton';
 import { AuthStackParamList } from '../../navigation/types';
 import { Colors, FontSize, Spacing } from '../../theme';
 import { loginNeoCare, requestSeniorOtp } from '../../services/auth.service';
-import { requestSeniorOtpWeb } from '../../services/seniorWebAuth';
 import { useAuthStore } from '../../store/auth.store';
 import { getApiErrorMessage } from '../../services/http';
 
@@ -52,13 +51,8 @@ export default function SignInScreen({ navigation, route }: Props) {
     setError(null);
     try {
       const ph = phone.trim();
-      if (Platform.OS === 'web') {
-        await requestSeniorOtpWeb(ph);
-        navigation.navigate('Otp', { phone: ph, mode: 'signin' });
-      } else {
-        const { sessionInfo } = await requestSeniorOtp(ph);
-        navigation.navigate('Otp', { phone: ph, sessionInfo, mode: 'signin' });
-      }
+      const { sessionInfo } = await requestSeniorOtp(ph);
+      navigation.navigate('Otp', { phone: ph, sessionInfo, mode: 'signin' });
     } catch (err) {
       setError(getApiErrorMessage(err));
     } finally {
