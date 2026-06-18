@@ -74,7 +74,15 @@ export default function App() {
 
   // On web: constrain to a phone-width frame centered in the browser window.
   // This prevents every component from stretching to the full desktop viewport.
-  return <View style={styles.frame}>{content}</View>;
+  // recaptcha-container anchors Firebase's invisible reCAPTCHA widget.
+  return (
+    <View style={styles.frame}>
+      {content}
+      {Platform.OS === 'web' && (
+        <View nativeID="recaptcha-container" style={{ position: 'absolute', width: 0, height: 0 }} />
+      )}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({

@@ -1,5 +1,5 @@
-import { signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
-import { firebaseAuth, recaptchaReady } from './firebaseApp.web';
+import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
+import { firebaseAuth } from './firebaseApp.web';
 import { seniorSessionCall } from './auth.service';
 import type { SeniorAuthResult } from './auth.service';
 
@@ -7,15 +7,15 @@ import type { SeniorAuthResult } from './auth.service';
 let _confirmation: ConfirmationResult | null = null;
 
 /**
- * Initiates phone sign-in via the Firebase JS SDK.
- * This project uses reCAPTCHA Enterprise — initializeRecaptchaConfig (called at
- * module load in firebaseApp.web.ts) fetches the Enterprise config so Firebase
- * handles verification internally. Passing a RecaptchaVerifier conflicts with
- * Enterprise mode and causes auth/error-code:-39.
+ * Initiates phone sign-in via the Firebase JS SDK (standard reCAPTCHA v2 invisible).
+ * Requires a DOM element with id="recaptcha-container" to be in the tree (App.tsx).
+ * The Vercel domain must be in Firebase console → Authentication → Authorized domains.
  */
 export async function requestSeniorOtpWeb(phone: string): Promise<void> {
-  await recaptchaReady;
-  _confirmation = await signInWithPhoneNumber(firebaseAuth, phone);
+  const verifier = new RecaptchaVerifier(firebaseAuth, 'recaptcha-container', {
+    size: 'invisible',
+  });
+  _confirmation = await signInWithPhoneNumber(firebaseAuth, phone, verifier);
 }
 
 /** Confirms the SMS code and exchanges the Firebase ID token for a backend session. */
