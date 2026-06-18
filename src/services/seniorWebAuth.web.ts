@@ -1,5 +1,5 @@
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
-import { firebaseAuth } from './firebaseApp.web';
+import { firebaseAuth, recaptchaReady } from './firebaseApp.web';
 import { seniorSessionCall } from './auth.service';
 import type { SeniorAuthResult } from './auth.service';
 
@@ -11,6 +11,9 @@ let _confirmation: ConfirmationResult | null = null;
  * Requires a DOM element with id="recaptcha-container" to be in the tree.
  */
 export async function requestSeniorOtpWeb(phone: string): Promise<void> {
+  // Ensure the reCAPTCHA config has been fetched from Firebase before attempting
+  // phone auth. Without this, Firebase v10+ throws auth/error-code:-39.
+  await recaptchaReady;
   const verifier = new RecaptchaVerifier(firebaseAuth, 'recaptcha-container', {
     size: 'invisible',
   });
