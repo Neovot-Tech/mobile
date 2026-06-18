@@ -11,7 +11,6 @@ import PrimaryButton from '../../../components/PrimaryButton';
 import { NeoCareOnboardingStackParamList } from '../../../navigation/types';
 import { useOnboardingStore } from '../../../store/onboarding.store';
 import { submitNeoCareProfile } from '../../../services/onboarding.service';
-import { MOCK_FLOW, MockValues } from '../../../config/mockFlow';
 
 type Props = NativeStackScreenProps<NeoCareOnboardingStackParamList, 'NeoCareProfileStep1'>;
 
@@ -35,9 +34,9 @@ export default function NeoCareProfileStep1Screen({ navigation }: Props) {
     setLoading(true);
     try {
       const profile = {
-        fullName: fullName.trim() || MockValues.neoCareName,
+        fullName: fullName.trim(),
         livesWithElderly: livesWith,
-        address: address.trim() || MockValues.address,
+        address: address.trim(),
       };
       setNeoCareProfile(profile);
       await submitNeoCareProfile(profile);
@@ -74,7 +73,7 @@ export default function NeoCareProfileStep1Screen({ navigation }: Props) {
         />
         <PrimaryButton
           label={t('common.submit')}
-          disabled={!MOCK_FLOW && (!fullName.trim() || !address.trim())}
+          disabled={!fullName.trim() || !address.trim()}
           loading={loading}
           onPress={handleSubmit}
         />

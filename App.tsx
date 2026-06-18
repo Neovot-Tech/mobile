@@ -1,10 +1,10 @@
 import './src/i18n';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import {
@@ -17,6 +17,7 @@ import { DMSans_400Regular, DMSans_500Medium, DMSans_700Bold } from '@expo-googl
 
 import RootNavigator from './src/navigation/RootNavigator';
 import BootSplashScreen from './src/screens/BootSplashScreen';
+import { useAuthStore } from './src/store/auth.store';
 
 // Hold the native splash until fonts are ready AND the animated splash has mounted,
 // so the launch sequence plays without a white flash. BootSplashScreen hides it.
@@ -40,8 +41,17 @@ export default function App() {
     DMSans_400Regular,
     DMSans_500Medium,
     DMSans_700Bold,
+    // Brand heading font (Circular Std). Only the Medium 500 weight is licensed
+    // in the repo so far; bold/book headings still fall back to DM Sans.
+    'CircularStd-Medium': require('./assets/Circular-Std-Font/circular-std-medium-500.ttf'),
   });
   const [splashDone, setSplashDone] = useState(false);
+
+  // Restore any persisted session while the branded splash plays (~5s window),
+  // so RootNavigator already reflects the logged-in role by the time it mounts.
+  useEffect(() => {
+    void useAuthStore.getState().hydrate();
+  }, []);
 
   // Keep the native splash up until fonts are ready (return null = native splash visible).
   if (!fontsLoaded) {
@@ -54,7 +64,7 @@ export default function App() {
   }
 
   return (
-    <SafeAreaProvider>
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <QueryClientProvider client={queryClient}>
         <NavigationContainer>
           <RootNavigator />

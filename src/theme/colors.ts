@@ -23,3 +23,27 @@ export const Colors = {
   neoSeniorMic: '#F8C8CB',
   neoSeniorMicIcon: '#E8442E',
 } as const;
+
+/**
+ * Brand design-system tokens lifted verbatim from designs/design.md (the
+ * landing-page system). Use these when building the not-yet-Figma'd feature
+ * screens so they stay on-brand. Kept separate from the semantic Colors above
+ * so the existing pixel-faithful auth/onboarding screens don't shift.
+ */
+export const Brand = {
+  primary: '#003B46',
+  primaryHover: '#022e38',
+  primaryForm: '#033f4c',
+  primaryText: '#06404b',
+  primaryContent: '#0b4149',
+  mutedTeal: '#4a6d73',
+  bgCream: '#FCFBF5',
+  bgWarmCard: '#fdf5e6',
+  bodyText: '#4A5568',
+  inputText: '#3b5f65',
+  accentPeach: '#FFD1BB',
+  borderWarm: '#FCDEA7',
+  borderCard: '#f8e1bc',
+  borderForm: '#bdcdd0',
+  gridLine: 'rgba(0, 59, 70, 0.03)',
+} as const;

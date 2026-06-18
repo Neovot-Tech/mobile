@@ -4,34 +4,57 @@
     "slug": "neovot",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/logo-mini-red.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.neovot.app"
+      "bundleIdentifier": "com.neovot.app",
+      "buildNumber": "1"
     },
     "android": {
       "package": "com.neovot.app",
+      "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#F5F0E8",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "foregroundImage": "./assets/logo-mini-red.png",
+        "backgroundColor": "#FFFFFF"
       },
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/logo-mini-red.png",
+      "name": "Neovot",
+      "shortName": "Neovot",
+      "description": "Your AI health companion — health monitoring and daily summaries for elderly Ghanaians and their caregivers.",
+      "themeColor": "#003B46",
+      "backgroundColor": "#003B46",
+      "display": "standalone",
+      "orientation": "portrait",
+      "lang": "en",
+      "bundler": "metro"
     },
     "plugins": [
       "expo-font",
-      "expo-audio",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Neovot to access your microphone so you can speak your health updates."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow Neovot to use your camera to capture a photo of a device reading or a prescription.",
+          "photosPermission": "Allow Neovot to access your photos so you can upload an image of a device reading or a prescription."
+        }
+      ],
       [
         "expo-splash-screen",
         {
           "backgroundColor": "#003B46"
         }
-      ]
+      ],
+      "expo-secure-store",
+      "@react-native-community/datetimepicker"
     ]
   }
 }

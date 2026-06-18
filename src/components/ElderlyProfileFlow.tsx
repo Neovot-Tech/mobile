@@ -1,37 +1,111 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 
 import ScreenShell from './ScreenShell';
-import StepDots from './StepDots';
 import FormCard from './FormCard';
 import LabeledInput from './LabeledInput';
 import PhoneInput from './PhoneInput';
-import Select from './Select';
 import PrimaryButton from './PrimaryButton';
-import { Colors, FontSize, MinTapTarget, Spacing } from '../theme';
+import DateInput from './DateInput';
+import ConditionMultiSelect from './ConditionMultiSelect';
+import { Brand, Colors, Fonts, FontSize, Spacing, BorderRadius, MinTapTarget } from '../theme';
 import { NeoSeniorProfilePayload } from '../services/onboarding.service';
-import { MOCK_FLOW, MockValues } from '../config/mockFlow';
+import type { PreferredLang } from '../services/types';
 
-// TODO: Twi — condition list copy needs locale entries when finalised
-const CONDITION_OPTIONS = [
-  'Hypertention',
-  'Diabetes',
-  'Arthritis',
-  'Heart condition',
-  'Other',
+// ─── Threshold config ─────────────────────────────────────────────────────────
+
+type ThresholdField =
+  | 'bpHighThreshold'
+  | 'sugarHighMmol'
+  | 'heartRateHigh'
+  | 'heartRateLow'
+  | 'spo2LowThreshold';
+
+interface ThresholdConfig {
+  field: ThresholdField;
+  label: string;
+  unit: string;
+  defaultVal: number;
+  hint: string;
+}
+
+// Only bp + sugar can be set at profile creation; heart rate + SpO₂ are
+// update-only in the contract and are sent via a follow-up PUT in the service.
+// We collect all of them here and let the service handle the two-step write.
+const THRESHOLD_MAP: Record<string, ThresholdConfig[]> = {
+  Hypertension: [
+    {
+      field: 'bpHighThreshold',
+      label: 'Blood pressure target (systolic)',
+      unit: 'mmHg',
+      defaultVal: 140,
+      hint: 'Alert fires when readings exceed this. Default: 140 mmHg.',
+    },
+  ],
+  Diabetes: [
+    {
+      field: 'sugarHighMmol',
+      label: 'Blood sugar target',
+      unit: 'mmol/L',
+      defaultVal: 10.0,
+      hint: 'Alert fires when readings exceed this. Default: 10.0 mmol/L.',
+    },
+  ],
+  'Heart condition': [
+    {
+      field: 'heartRateHigh',
+      label: 'Heart rate — upper limit',
+      unit: 'bpm',
+      defaultVal: 100,
+      hint: 'Alert fires above this. Default: 100 bpm.',
+    },
+    {
+      field: 'heartRateLow',
+      label: 'Heart rate — lower limit',
+      unit: 'bpm',
+      defaultVal: 50,
+      hint: 'Alert fires below this. Default: 50 bpm.',
+    },
+  ],
+  'COPD/Respiratory': [
+    {
+      field: 'spo2LowThreshold',
+      label: 'Oxygen saturation (SpO₂) limit',
+      unit: '%',
+      defaultVal: 94,
+      hint: 'Alert fires below this. Default: 94%.',
+    },
+  ],
+};
+
+// ─── Language options ─────────────────────────────────────────────────────────
+
+const LANG_OPTIONS: { key: PreferredLang; label: string }[] = [
+  { key: 'en', label: 'English' },
+  { key: 'tw', label: 'Twi' },
 ];
 
-type Phase = 'form' | 'comments' | 'review';
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatDate(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+type Phase = 'form' | 'review';
 
 interface ElderlyProfileFlowProps {
-  /** Headers shown on the form/comments phases */
   title: string;
   greeting?: React.ReactNode;
   subtitle: string;
   onSubmit: (data: NeoSeniorProfilePayload) => Promise<void>;
   submitting: boolean;
+  /** Rendered in ScreenShell.headerRight, e.g. <StepDots current={2} total={3} /> */
+  headerRight?: React.ReactNode;
 }
 
 export default function ElderlyProfileFlow({
@@ -40,40 +114,65 @@ export default function ElderlyProfileFlow({
   subtitle,
   onSubmit,
   submitting,
+  headerRight,
 }: ElderlyProfileFlowProps) {
   const { t } = useTranslation();
 
   const [phase, setPhase] = useState<Phase>('form');
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
-  const [condition, setCondition] = useState(CONDITION_OPTIONS[0]);
-  const [comments, setComments] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [preferredLang, setPreferredLang] = useState<PreferredLang>('en');
+  const [conditions, setConditions] = useState<string[]>([]);
+  const [thresholds, setThresholds] = useState<Partial<Record<ThresholdField, string>>>({});
 
-  const formValid = fullName.trim() && phone.trim() && address.trim();
+  const formValid = !!fullName.trim();
+  const activeThresholds = conditions.flatMap((c) => THRESHOLD_MAP[c] ?? []);
 
-  // MOCK_FLOW: fill empty fields before advancing so review + pairing card render real copy
-  const handleNext = () => {
-    if (MOCK_FLOW) {
-      if (!fullName.trim()) setFullName(MockValues.seniorName);
-      if (!phone.trim()) setPhone(MockValues.phone);
-      if (!address.trim()) setAddress(MockValues.address);
-    }
-    setPhase('comments');
+  const setThresholdValue = (field: ThresholdField, val: string) =>
+    setThresholds((prev) => ({ ...prev, [field]: val }));
+
+  const getThresholdDisplay = (item: ThresholdConfig): string =>
+    thresholds[item.field] ?? `${item.defaultVal}`;
+
+  const handleSubmit = () => {
+    const selectedSet = new Set(conditions);
+
+    const payload: NeoSeniorProfilePayload = {
+      fullName: fullName.trim(),
+      phone,
+      dateOfBirth: dateOfBirth || undefined,
+      preferredLang,
+      conditions,
+      bpHighThreshold:
+        selectedSet.has('Hypertension') && thresholds.bpHighThreshold
+          ? parseFloat(thresholds.bpHighThreshold)
+          : undefined,
+      sugarHighMmol:
+        selectedSet.has('Diabetes') && thresholds.sugarHighMmol
+          ? parseFloat(thresholds.sugarHighMmol)
+          : undefined,
+      heartRateHigh:
+        selectedSet.has('Heart condition') && thresholds.heartRateHigh
+          ? parseFloat(thresholds.heartRateHigh)
+          : undefined,
+      heartRateLow:
+        selectedSet.has('Heart condition') && thresholds.heartRateLow
+          ? parseFloat(thresholds.heartRateLow)
+          : undefined,
+      spo2LowThreshold:
+        selectedSet.has('COPD/Respiratory') && thresholds.spo2LowThreshold
+          ? parseFloat(thresholds.spo2LowThreshold)
+          : undefined,
+    };
+    void onSubmit(payload);
   };
 
-  const handleSubmit = () =>
-    onSubmit({
-      fullName,
-      phone,
-      residentialAddress: address,
-      primaryCondition: condition,
-      otherComments: comments,
-    });
+  // ─── Review phase ───────────────────────────────────────────────────────────
 
   if (phase === 'review') {
     return (
-      <ScreenShell headerRight={<StepDots current={2} total={3} />}>
+      <ScreenShell headerRight={headerRight}>
         <Pressable
           style={styles.editRow}
           onPress={() => setPhase('form')}
@@ -84,34 +183,51 @@ export default function ElderlyProfileFlow({
           <Text style={styles.editLabel}>{t('common.edit')}</Text>
           <Ionicons name="pencil-outline" size={14} color={Colors.textPrimary} />
         </Pressable>
+
         <FormCard>
-          <LabeledInput
-            label={t('neoCareOnboarding.elderlyFullName')}
-            value={fullName}
-            readOnly
+          <ReviewRow label={t('onboarding.fullName')} value={fullName} />
+          <ReviewRow
+            label={t('onboarding.phone')}
+            value={phone || t('onboarding.notProvided')}
           />
-          <PhoneInput
-            label={t('neoCareOnboarding.phoneNumber')}
-            value={phone}
-            onChangeText={setPhone}
-            readOnly
+          <ReviewRow
+            label={t('onboarding.dateOfBirth')}
+            value={dateOfBirth ? formatDate(dateOfBirth) : t('onboarding.notProvided')}
           />
-          <LabeledInput
-            label={t('neoCareOnboarding.residentialAddress')}
-            value={address}
-            readOnly
+          <ReviewRow
+            label={t('onboarding.language')}
+            value={preferredLang === 'en' ? 'English' : 'Twi'}
           />
-          <Select
-            label={t('neoCareOnboarding.primaryMedicalCondition')}
-            value={condition}
-            options={CONDITION_OPTIONS}
-            onChange={setCondition}
-            readOnly
-          />
-          <Text style={styles.commentsLabel}>{t('neoCareOnboarding.otherComments')}</Text>
-          <View style={styles.commentsBox}>
-            <Text style={styles.commentsText}>{comments}</Text>
+
+          <View style={styles.reviewSection}>
+            <Text style={styles.reviewLabel}>{t('onboarding.conditions')}</Text>
+            {conditions.length === 0 ? (
+              <Text style={styles.reviewValue}>{t('onboarding.notProvided')}</Text>
+            ) : (
+              <View style={styles.chipRow}>
+                {conditions.map((c) => (
+                  <View key={c} style={styles.reviewChip}>
+                    <Text style={styles.reviewChipText}>{c}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
           </View>
+
+          {activeThresholds.length > 0 && (
+            <View style={styles.reviewSection}>
+              <Text style={styles.reviewLabel}>{t('onboarding.thresholds')}</Text>
+              {activeThresholds.map((item) => (
+                <View key={item.field} style={styles.thresholdReviewRow}>
+                  <Text style={styles.thresholdReviewLabel}>{item.label}</Text>
+                  <Text style={styles.thresholdReviewValue}>
+                    {getThresholdDisplay(item)} {item.unit}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+
           <PrimaryButton
             label={t('common.submit')}
             loading={submitting}
@@ -122,97 +238,112 @@ export default function ElderlyProfileFlow({
     );
   }
 
-  if (phase === 'comments') {
-    return (
-      <ScreenShell
-        headerRight={<StepDots current={2} total={3} />}
-        title={title}
-        greeting={greeting}
-        subtitle={subtitle}
-      >
-        <FormCard>
-          <Text style={styles.commentsLabel}>{t('neoCareOnboarding.otherComments')}</Text>
-          <TextInput
-            value={comments}
-            onChangeText={setComments}
-            placeholder={t('neoCareOnboarding.commentsPlaceholder')}
-            placeholderTextColor={Colors.textMuted}
-            multiline
-            textAlignVertical="top"
-            style={styles.commentsInput}
-            accessibilityLabel={t('neoCareOnboarding.otherComments')}
-          />
-          <Pressable
-            style={styles.recordButton}
-            onPress={() => {
-              // TODO Phase 3: wire expo-audio recording + jobs service
-            }}
-            accessibilityRole="button"
-            accessibilityLabel={t('neoCareOnboarding.tapToRecord')}
-          >
-            <View style={styles.micCircle}>
-              <Ionicons name="mic-outline" size={22} color={Colors.neoSeniorMicIcon} />
-            </View>
-            <Text style={styles.recordLabel}>{t('neoCareOnboarding.tapToRecord')}</Text>
-          </Pressable>
-          <View style={styles.buttonRow}>
-            <PrimaryButton
-              label={t('common.previous')}
-              variant="secondary"
-              onPress={() => setPhase('form')}
-              style={styles.rowButton}
-            />
-            <PrimaryButton
-              label={t('common.review')}
-              onPress={() => setPhase('review')}
-              style={styles.rowButton}
-            />
-          </View>
-        </FormCard>
-      </ScreenShell>
-    );
-  }
+  // ─── Form phase ─────────────────────────────────────────────────────────────
 
   return (
     <ScreenShell
-      headerRight={<StepDots current={2} total={3} />}
+      headerRight={headerRight}
       title={title}
       greeting={greeting}
       subtitle={subtitle}
     >
       <FormCard>
         <LabeledInput
-          label={t('neoCareOnboarding.elderlyFullName')}
-          placeholder={t('neoCareOnboarding.elderlyNamePlaceholder')}
+          label={t('onboarding.fullName')}
+          placeholder={t('onboarding.fullNamePlaceholder')}
           value={fullName}
           onChangeText={setFullName}
         />
         <PhoneInput
-          label={t('neoCareOnboarding.phoneNumber')}
+          label={t('onboarding.phone')}
           value={phone}
           onChangeText={setPhone}
         />
-        <LabeledInput
-          label={t('neoCareOnboarding.residentialAddress')}
-          placeholder={t('neoCareOnboarding.addressPlaceholder')}
-          value={address}
-          onChangeText={setAddress}
+        <DateInput
+          label={t('onboarding.dateOfBirth')}
+          value={dateOfBirth}
+          onChange={setDateOfBirth}
         />
-        <Select
-          label={t('neoCareOnboarding.primaryMedicalCondition')}
-          value={condition}
-          options={CONDITION_OPTIONS}
-          onChange={setCondition}
+
+        {/* Language preference */}
+        <View style={styles.langWrap}>
+          <Text style={styles.fieldLabel}>{t('onboarding.language')}</Text>
+          <View style={styles.langRow}>
+            {LANG_OPTIONS.map(({ key, label }) => (
+              <Pressable
+                key={key}
+                style={[styles.langBtn, preferredLang === key && styles.langBtnActive]}
+                onPress={() => setPreferredLang(key)}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: preferredLang === key }}
+                accessibilityLabel={label}
+              >
+                <Text style={[styles.langText, preferredLang === key && styles.langTextActive]}>
+                  {label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        <ConditionMultiSelect
+          label={t('onboarding.conditions')}
+          hint={t('onboarding.conditionsHint')}
+          selected={conditions}
+          onChange={setConditions}
         />
+
+        {/* Inline threshold section — appears when relevant conditions are selected */}
+        {activeThresholds.length > 0 && (
+          <View style={styles.thresholdSection}>
+            <Text style={styles.thresholdTitle}>{t('onboarding.thresholds')}</Text>
+            <Text style={styles.thresholdHint}>{t('onboarding.thresholdsHint')}</Text>
+            {activeThresholds.map((item) => (
+              <View key={item.field} style={styles.thresholdField}>
+                <Text style={styles.thresholdFieldLabel}>{item.label}</Text>
+                <Text style={styles.thresholdFieldHint}>{item.hint}</Text>
+                <View style={styles.thresholdInputRow}>
+                  <TextInput
+                    style={styles.thresholdInput}
+                    value={thresholds[item.field] ?? `${item.defaultVal}`}
+                    onChangeText={(v) => setThresholdValue(item.field, v)}
+                    keyboardType="numeric"
+                    placeholder={`${item.defaultVal}`}
+                    placeholderTextColor={Colors.textMuted}
+                    accessibilityLabel={item.label}
+                    selectTextOnFocus
+                  />
+                  <View style={styles.unitBadge}>
+                    <Text style={styles.unitText}>{item.unit}</Text>
+                  </View>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
         <PrimaryButton
-          label={t('common.next')}
-          disabled={!MOCK_FLOW && !formValid}
-          onPress={handleNext}
+          label={t('common.review')}
+          disabled={!formValid}
+          onPress={() => setPhase('review')}
         />
       </FormCard>
     </ScreenShell>
   );
 }
+
+// ─── ReviewRow ────────────────────────────────────────────────────────────────
+
+function ReviewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.reviewRow}>
+      <Text style={styles.reviewLabel}>{label}</Text>
+      <Text style={styles.reviewValue}>{value}</Text>
+    </View>
+  );
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   editRow: {
@@ -223,55 +354,122 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   editLabel: { color: Colors.textPrimary, fontSize: FontSize.sm, fontWeight: '600' },
-  commentsLabel: {
+
+  // Language
+  langWrap: { marginBottom: Spacing.lg },
+  fieldLabel: {
     color: Colors.textPrimary,
     fontSize: FontSize.sm,
     fontWeight: '700',
     marginBottom: Spacing.sm,
   },
-  commentsBox: {
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 10,
-    padding: Spacing.base,
-    minHeight: 120,
-    marginBottom: Spacing.lg,
-  },
-  commentsText: { color: Colors.textPrimary, fontSize: FontSize.base, lineHeight: 24 },
-  commentsInput: {
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 10,
-    padding: Spacing.base,
-    minHeight: 140,
-    fontSize: FontSize.base,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.lg,
-  },
-  recordButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.base,
-    backgroundColor: '#FDF6E3',
-    borderRadius: 12,
-    padding: Spacing.md,
-    marginBottom: Spacing.lg,
+  langRow: { flexDirection: 'row', gap: Spacing.sm },
+  langBtn: {
+    flex: 1,
     minHeight: MinTapTarget.neoSenior,
-  },
-  micCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.neoSeniorMic,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.surface,
   },
-  recordLabel: {
+  langBtnActive: { borderColor: Brand.primary, backgroundColor: '#EEF5F6' },
+  langText: { fontFamily: Fonts.bodyMedium, fontSize: FontSize.base, color: Colors.textMuted },
+  langTextActive: { color: Brand.primary, fontFamily: Fonts.bodySemiBold },
+
+  // Threshold section
+  thresholdSection: {
+    backgroundColor: Colors.goldLight,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.base,
+    marginBottom: Spacing.lg,
+    gap: Spacing.md,
+  },
+  thresholdTitle: { fontFamily: Fonts.bodySemiBold, fontSize: FontSize.sm, color: Colors.textPrimary },
+  thresholdHint: {
+    fontFamily: Fonts.body,
+    fontSize: FontSize.xs,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
+  thresholdField: { gap: Spacing.xs },
+  thresholdFieldLabel: { fontFamily: Fonts.bodySemiBold, fontSize: FontSize.sm, color: Colors.textPrimary },
+  thresholdFieldHint: { fontFamily: Fonts.body, fontSize: FontSize.xs, color: Colors.textMuted },
+  thresholdInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.xs,
+  },
+  thresholdInput: {
     flex: 1,
+    minHeight: MinTapTarget.neoCare,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.md,
+    fontSize: FontSize.base,
     color: Colors.textPrimary,
-    fontSize: FontSize.sm,
-    fontWeight: '700',
+    backgroundColor: Colors.surface,
   },
-  buttonRow: { flexDirection: 'row', gap: Spacing.base },
-  rowButton: { flex: 1 },
+  unitBadge: {
+    paddingHorizontal: Spacing.md,
+    minHeight: MinTapTarget.neoCare,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: BorderRadius.sm,
+  },
+  unitText: { fontFamily: Fonts.bodyMedium, fontSize: FontSize.sm, color: Colors.textMuted },
+
+  // Review
+  reviewRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    marginBottom: Spacing.sm,
+  },
+  reviewSection: {
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    marginBottom: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  reviewLabel: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: FontSize.sm,
+    color: Colors.textMuted,
+    flex: 1,
+  },
+  reviewValue: {
+    fontFamily: Fonts.bodyMedium,
+    fontSize: FontSize.sm,
+    color: Colors.textPrimary,
+    flex: 1,
+    textAlign: 'right',
+  },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs },
+  reviewChip: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    backgroundColor: '#EEF5F6',
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Brand.primary,
+  },
+  reviewChipText: { fontFamily: Fonts.bodyMedium, fontSize: FontSize.xs, color: Brand.primary },
+  thresholdReviewRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: Spacing.xs,
+  },
+  thresholdReviewLabel: { fontFamily: Fonts.body, fontSize: FontSize.xs, color: Colors.textMuted, flex: 1 },
+  thresholdReviewValue: { fontFamily: Fonts.bodySemiBold, fontSize: FontSize.xs, color: Colors.textPrimary },
 });

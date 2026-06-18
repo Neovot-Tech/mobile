@@ -39,7 +39,8 @@ export default function OtpInput({ length = 4, value, onChange }: OtpInputProps)
           onChangeText={(text) => handleChange(text, i)}
           onKeyPress={({ nativeEvent }) => handleKeyPress(nativeEvent.key, i)}
           maxLength={1}
-          autoCapitalize="characters"
+          keyboardType="numeric"
+          autoCapitalize="none"
           style={styles.box}
           accessibilityLabel={`OTP digit ${i + 1}`}
         />
@@ -49,7 +50,7 @@ export default function OtpInput({ length = 4, value, onChange }: OtpInputProps)
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', justifyContent: 'space-between', gap: Spacing.base },
+  row: { flexDirection: 'row', justifyContent: 'space-between', gap: Spacing.sm },
   box: {
     flex: 1,
     minHeight: MinTapTarget.neoSenior,

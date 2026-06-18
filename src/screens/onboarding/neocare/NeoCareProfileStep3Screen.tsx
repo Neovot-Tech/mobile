@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -8,6 +8,7 @@ import FormCard from '../../../components/FormCard';
 import Greeting from '../../../components/Greeting';
 import PairingCodeCard from '../../../components/PairingCodeCard';
 import PrimaryButton from '../../../components/PrimaryButton';
+import CompleteProfilePrompt from '../../../components/CompleteProfilePrompt';
 import { NeoCareOnboardingStackParamList } from '../../../navigation/types';
 import { useOnboardingStore } from '../../../store/onboarding.store';
 import { useAuthStore } from '../../../store/auth.store';
@@ -18,23 +19,17 @@ export default function NeoCareProfileStep3Screen({ route }: Props) {
   const { neoSeniorId } = route.params;
   const { t } = useTranslation();
   const { neoCareProfile, neoSeniorProfile, reset } = useOnboardingStore();
-  const { setUser, setToken } = useAuthStore();
+  const completeOnboarding = useAuthStore((s) => s.completeOnboarding);
+
+  const [showPrompt, setShowPrompt] = useState(false);
 
   const careFirstName = (neoCareProfile.fullName ?? '').split(' ')[0] || '';
   const seniorName = neoSeniorProfile.fullName ?? '';
 
-  const handleComplete = () => {
-    // STUB auth — replace with real registration result when backend is ready
-    setToken('mock-token');
-    setUser({
-      id: 'mock-neocare-001',
-      role: 'neo_care',
-      phone: '',
-      displayName: neoCareProfile.fullName ?? '',
-      linkedNeoSeniorId: neoSeniorId,
-      language: 'en',
-    });
-    reset(); // RootNavigator flips to the NeoCare tabs
+  const handleDismissPrompt = () => {
+    setShowPrompt(false);
+    completeOnboarding(); // RootNavigator flips to the NeoCare tabs
+    reset();
   };
 
   return (
@@ -50,8 +45,10 @@ export default function NeoCareProfileStep3Screen({ route }: Props) {
     >
       <FormCard>
         <PairingCodeCard name={seniorName} neoSeniorId={neoSeniorId} />
-        <PrimaryButton label={t('common.complete')} onPress={handleComplete} />
+        <PrimaryButton label={t('common.complete')} onPress={() => setShowPrompt(true)} />
       </FormCard>
+
+      <CompleteProfilePrompt visible={showPrompt} onDismiss={handleDismissPrompt} />
     </ScreenShell>
   );
 }

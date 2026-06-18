@@ -9,9 +9,9 @@ interface NeoCareProfile {
 interface NeoSeniorProfile {
   fullName: string;
   phone: string;
-  residentialAddress: string;
-  primaryCondition: string;
-  otherComments: string;
+  dateOfBirth?: string;
+  conditions: string[];
+  preferredLang: string;
 }
 
 interface OnboardingState {

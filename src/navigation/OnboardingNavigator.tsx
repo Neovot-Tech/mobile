@@ -13,6 +13,7 @@ import {
   NeoCareOnboardingStackParamList,
   NeoSeniorOnboardingStackParamList,
 } from './types';
+import { useAuthStore } from '../store/auth.store';
 
 const NeoCareStack = createNativeStackNavigator<NeoCareOnboardingStackParamList>();
 const NeoSeniorStack = createNativeStackNavigator<NeoSeniorOnboardingStackParamList>();
@@ -28,8 +29,13 @@ export function NeoCareOnboardingNavigator() {
 }
 
 export function NeoSeniorOnboardingNavigator() {
+  // Start on ConfirmLink when the senior is activated but has a caregiver request
+  // awaiting consent; otherwise start on Activate (enter NSR / self-register).
+  const step = useAuthStore((s) => s.seniorOnboardingStep);
+  const initialRouteName = step === 'pending_link' ? 'NeoSeniorConfirmLink' : 'NeoSeniorActivate';
+
   return (
-    <NeoSeniorStack.Navigator screenOptions={{ headerShown: false }}>
+    <NeoSeniorStack.Navigator screenOptions={{ headerShown: false }} initialRouteName={initialRouteName}>
       <NeoSeniorStack.Screen name="NeoSeniorActivate" component={NeoSeniorActivateScreen} />
       <NeoSeniorStack.Screen name="NeoSeniorConfirmLink" component={NeoSeniorConfirmLinkScreen} />
       <NeoSeniorStack.Screen name="NeoSeniorSelfReg" component={NeoSeniorSelfRegScreen} />

@@ -4,6 +4,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import ElderlyProfileFlow from '../../../components/ElderlyProfileFlow';
 import Greeting from '../../../components/Greeting';
+import StepDots from '../../../components/StepDots';
 import { NeoCareOnboardingStackParamList } from '../../../navigation/types';
 import { useOnboardingStore } from '../../../store/onboarding.store';
 import {
@@ -44,6 +45,7 @@ export default function NeoCareProfileStep2Screen({ navigation }: Props) {
       subtitle={t('neoCareOnboarding.step2Subtitle')}
       onSubmit={handleSubmit}
       submitting={submitting}
+      headerRight={<StepDots current={2} total={3} />}
     />
   );
 }

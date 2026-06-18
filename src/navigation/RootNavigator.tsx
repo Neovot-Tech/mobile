@@ -6,29 +6,36 @@ import {
   NeoCareOnboardingNavigator,
   NeoSeniorOnboardingNavigator,
 } from './OnboardingNavigator';
-import NeoCareTabNavigator from './NeoCareTabNavigator';
-import NeoSeniorTabNavigator from './NeoSeniorTabNavigator';
+import { NeoCareAppNavigator, NeoSeniorAppNavigator } from './AppNavigator';
 import { RootStackParamList } from './types';
 import { useAuthStore } from '../store/auth.store';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function RootNavigator() {
-  const { isAuthenticated, user } = useAuthStore();
+  const { user, pendingOnboarding } = useAuthStore();
+
+  // Declarative role/onboarding routing — entering/leaving each phase is driven
+  // by the auth store (signIn / beginOnboarding / completeOnboarding), not by
+  // imperative navigation, so there is no stale screen left mounted.
+  let content: React.ReactNode;
+  if (!user) {
+    content = <Stack.Screen name="Auth" component={AuthNavigator} />;
+  } else if (pendingOnboarding === 'neo_care') {
+    content = (
+      <Stack.Screen name="NeoCareOnboarding" component={NeoCareOnboardingNavigator} />
+    );
+  } else if (pendingOnboarding === 'neo_senior') {
+    content = (
+      <Stack.Screen name="NeoSeniorOnboarding" component={NeoSeniorOnboardingNavigator} />
+    );
+  } else if (user.role === 'neo_care') {
+    content = <Stack.Screen name="NeoCareApp" component={NeoCareAppNavigator} />;
+  } else {
+    content = <Stack.Screen name="NeoSeniorApp" component={NeoSeniorAppNavigator} />;
+  }
 
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {!isAuthenticated ? (
-        <>
-          <Stack.Screen name="Auth" component={AuthNavigator} />
-          <Stack.Screen name="NeoCareOnboarding" component={NeoCareOnboardingNavigator} />
-          <Stack.Screen name="NeoSeniorOnboarding" component={NeoSeniorOnboardingNavigator} />
-        </>
-      ) : user?.role === 'neo_care' ? (
-        <Stack.Screen name="NeoCareApp" component={NeoCareTabNavigator} />
-      ) : (
-        <Stack.Screen name="NeoSeniorApp" component={NeoSeniorTabNavigator} />
-      )}
-    </Stack.Navigator>
+    <Stack.Navigator screenOptions={{ headerShown: false }}>{content}</Stack.Navigator>
   );
 }

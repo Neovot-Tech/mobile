@@ -1,11 +1,13 @@
-// Design spec: headings/cards use "Circular Std" (commercial, no licence file in repo).
-// DM Sans is the substitute until the licensed OTFs are supplied in assets/fonts/.
+// Design spec: headings/cards use "Circular Std".
+// Circular Std Medium (500) is now licensed in assets/Circular-Std-Font/ and used
+// for the primary heading weight. Bold/Book weights aren't supplied yet, so they
+// still fall back to DM Sans until those files land.
 export const Fonts = {
-  /** Circular Std Medium substitute */
-  heading: 'DMSans_500Medium',
-  /** Circular Std Bold substitute */
+  /** Circular Std Medium (brand heading font) */
+  heading: 'CircularStd-Medium',
+  /** Circular Std Bold substitute (DM Sans until the bold weight is licensed) */
   headingBold: 'DMSans_700Bold',
-  /** Circular Std Book substitute */
+  /** Circular Std Book substitute (DM Sans until the book weight is licensed) */
   headingBook: 'DMSans_400Regular',
   body: 'Montserrat_400Regular',
   bodyMedium: 'Montserrat_500Medium',
