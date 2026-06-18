@@ -151,6 +151,21 @@ export async function verifySeniorOtp(params: {
   return { user: toAuthUser(me), tokens, onboarding: resolveSeniorOnboarding(me) };
 }
 
+// --- NeoSenior (web — Firebase phone auth) --------------------------------
+
+/**
+ * Called after the Firebase JS SDK completes phone auth on web.
+ * Posts the Firebase ID token to the backend session endpoint (which provisions
+ * the NeoSenior row on first sign-in), then fetches the full profile.
+ * Returns the same SeniorAuthResult shape as verifySeniorOtp so callers are uniform.
+ */
+export async function seniorSessionCall(idToken: string): Promise<SeniorAuthResult> {
+  await api.post(Endpoints.auth.seniorSession, { id_token: idToken });
+  const me = await fetchMe(idToken);
+  // refreshToken is empty on web — the Firebase JS SDK manages token renewal.
+  return { user: toAuthUser(me), tokens: { idToken, refreshToken: '' }, onboarding: resolveSeniorOnboarding(me) };
+}
+
 // --- Token lifecycle ------------------------------------------------------
 
 /** Exchange a refresh token for a fresh id_token after on-device biometric unlock. */

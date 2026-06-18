@@ -3,6 +3,7 @@ import { API_BASE, Endpoints } from '../constants/api';
 import { useAuthStore } from '../store/auth.store';
 import { ApiErrorBody, ConsentCategory } from './types';
 import { saveTokens, clearTokens } from './tokenStorage';
+import { getWebFreshToken } from './webTokenRefresher';
 
 export const http = axios.create({ baseURL: API_BASE });
 
@@ -23,7 +24,18 @@ let refreshing: Promise<string | null> | null = null;
 
 async function refreshIdToken(): Promise<string | null> {
   const { refreshToken, setTokens, logout } = useAuthStore.getState();
-  if (!refreshToken) return null;
+  if (!refreshToken) {
+    // Web sessions have no backend refresh token — delegate to the Firebase JS SDK.
+    const newToken = await getWebFreshToken();
+    if (newToken) {
+      setTokens({ idToken: newToken, refreshToken: '' });
+      await saveTokens({ idToken: newToken, refreshToken: '' });
+      return newToken;
+    }
+    logout();
+    await clearTokens();
+    return null;
+  }
   try {
     const { data } = await axios.post(`${API_BASE}${Endpoints.auth.refresh}`, {
       refresh_token: refreshToken,
@@ -66,6 +78,7 @@ export function getApiErrorMessage(error: unknown, fallback = 'Something went wr
   if (axios.isAxiosError(error)) {
     return (error.response?.data as ApiErrorBody | undefined)?.detail ?? error.message ?? fallback;
   }
+  if (error instanceof Error) return error.message;
   return fallback;
 }
 

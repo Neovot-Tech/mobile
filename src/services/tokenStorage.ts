@@ -44,8 +44,10 @@ export async function loadTokens(): Promise<StoredTokens | null> {
     getItem(ID_TOKEN_KEY),
     getItem(REFRESH_TOKEN_KEY),
   ]);
-  if (!idToken || !refreshToken) return null;
-  return { idToken, refreshToken };
+  // On web there is no backend refresh token (Firebase SDK manages renewal), so
+  // refreshToken may be stored as an empty string — still a valid session.
+  if (!idToken) return null;
+  return { idToken, refreshToken: refreshToken ?? '' };
 }
 
 export async function clearTokens(): Promise<void> {

@@ -17,6 +17,7 @@ export const Endpoints = {
     neoCareLogin: '/auth/neo-care/login',
     seniorRequestOtp: '/auth/neo-senior/request-otp',
     seniorVerifyOtp: '/auth/neo-senior/verify-otp',
+    seniorSession: '/auth/neo-senior/session',
     biometricToken: '/auth/neo-senior/biometric-token',
     refresh: '/auth/refresh',
     logout: '/auth/logout',
