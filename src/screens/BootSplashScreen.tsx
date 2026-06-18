@@ -3,6 +3,7 @@ import {
   Animated,
   Easing,
   Image,
+  Platform,
   StyleSheet,
   TouchableWithoutFeedback,
   View,
@@ -28,11 +29,12 @@ const WHITE_ICON = require('../../assets/splash/icon-white.png');
 const RED_ICON = require('../../assets/splash/icon-red.png');
 const WORDMARK = require('../../assets/splash/wordmark.png'); // wordmark + "HEALTH UNRESTRICTED"
 
-// Intrinsic aspect ratios (w/h) of the trimmed assets, read at bundle time.
-const iconSrc = Image.resolveAssetSource(RED_ICON);
-const ICON_AR = iconSrc && iconSrc.height ? iconSrc.width / iconSrc.height : 440 / 500;
-const wordSrc = Image.resolveAssetSource(WORDMARK);
-const WORDMARK_AR = wordSrc && wordSrc.height ? wordSrc.width / wordSrc.height : 780 / 248;
+// Image.resolveAssetSource is not implemented in react-native-web; fall back to
+// the known design-time aspect ratios so the splash still plays on web.
+const iconSrc = Platform.OS !== 'web' ? Image.resolveAssetSource(RED_ICON) : null;
+const ICON_AR = iconSrc?.height ? iconSrc.width / iconSrc.height : 440 / 500;
+const wordSrc = Platform.OS !== 'web' ? Image.resolveAssetSource(WORDMARK) : null;
+const WORDMARK_AR = wordSrc?.height ? wordSrc.width / wordSrc.height : 780 / 248;
 
 const ICON_HEIGHT = 104; // display height of the dot+cross mark
 const ICON_TOP_PCT = 0.4; // icon top at 40% of screen height
