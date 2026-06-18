@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Alert } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -11,6 +12,7 @@ import {
   submitNeoSeniorProfile,
   NeoSeniorProfilePayload,
 } from '../../../services/onboarding.service';
+import { getApiErrorMessage } from '../../../services/http';
 
 type Props = NativeStackScreenProps<NeoCareOnboardingStackParamList, 'NeoCareProfileStep2'>;
 
@@ -29,6 +31,8 @@ export default function NeoCareProfileStep2Screen({ navigation }: Props) {
       const { neoSeniorId } = await submitNeoSeniorProfile(data);
       setGeneratedNeoSeniorId(neoSeniorId);
       navigation.navigate('NeoCareProfileStep3', { neoSeniorId });
+    } catch (err) {
+      Alert.alert(t('common.error'), getApiErrorMessage(err));
     } finally {
       setSubmitting(false);
     }

@@ -76,7 +76,17 @@ http.interceptors.response.use(
 /** Pull the backend's `{ detail }` message off any thrown error. */
 export function getApiErrorMessage(error: unknown, fallback = 'Something went wrong'): string {
   if (axios.isAxiosError(error)) {
-    return (error.response?.data as ApiErrorBody | undefined)?.detail ?? error.message ?? fallback;
+    const detail = (error.response?.data as ApiErrorBody | { detail?: unknown } | undefined)?.detail;
+    // FastAPI validation errors return `detail` as an array of {loc, msg, ...}.
+    if (Array.isArray(detail)) {
+      const msg = detail
+        .map((d) => (d && typeof d === 'object' && 'msg' in d ? String((d as { msg: unknown }).msg) : ''))
+        .filter(Boolean)
+        .join('; ');
+      return msg || error.message || fallback;
+    }
+    if (typeof detail === 'string') return detail;
+    return error.message ?? fallback;
   }
   if (error instanceof Error) return error.message;
   return fallback;

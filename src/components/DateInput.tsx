@@ -107,12 +107,40 @@ export default function DateInput({ label, value, onChange }: DateInputProps) {
         />
         <Pressable
           style={styles.iconBtn}
-          onPress={openPicker}
+          onPress={Platform.OS !== 'web' ? openPicker : undefined}
           hitSlop={8}
           accessibilityRole="button"
           accessibilityLabel="Open calendar"
         >
           <Ionicons name="calendar-outline" size={22} color={Colors.textMuted} />
+          {Platform.OS === 'web' && (
+            // @ts-ignore: raw <input> is valid in a browser environment
+            <input
+              type="date"
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                opacity: 0,
+                cursor: 'pointer',
+                width: '100%',
+                height: '100%',
+              }}
+              max={new Date().toISOString().split('T')[0]}
+              min="1900-01-01"
+              value={value || ''}
+              onChange={(e: any) => {
+                const iso: string = e.target.value; // 'YYYY-MM-DD'
+                if (iso) {
+                  setText(isoToDisplay(iso));
+                  setInvalid(false);
+                  onChange(iso);
+                }
+              }}
+            />
+          )}
         </Pressable>
       </View>
       {invalid && <Text style={styles.error}>Enter a valid date (DD/MM/YYYY)</Text>}

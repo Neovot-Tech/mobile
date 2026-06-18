@@ -88,15 +88,19 @@ export interface PendingLink {
 /** Map the UI payload onto the CREATE contract body (snake_case).
  *  heartRate and spo2 thresholds are update-only — sent via a follow-up PUT. */
 function toCreateBody(data: NeoSeniorProfilePayload) {
-  return {
+  // phone_number / date_of_birth are nullable on the backend, but
+  // bp_high_threshold (integer) and sugar_high_mmol (number) are NOT — sending
+  // null gets a 422, so omit them entirely when unset (backend applies defaults).
+  const body: Record<string, unknown> = {
     full_name: data.fullName,
     phone_number: data.phone || null,
     date_of_birth: data.dateOfBirth ?? null,
     conditions: data.conditions,
     preferred_lang: data.preferredLang,
-    bp_high_threshold: data.bpHighThreshold ?? null,
-    sugar_high_mmol: data.sugarHighMmol ?? null,
   };
+  if (data.bpHighThreshold != null) body.bp_high_threshold = Math.round(data.bpHighThreshold);
+  if (data.sugarHighMmol != null) body.sugar_high_mmol = data.sugarHighMmol;
+  return body;
 }
 
 function toUpdateBody(p: UpdateNeoSeniorProfileRequest) {
@@ -106,7 +110,7 @@ function toUpdateBody(p: UpdateNeoSeniorProfileRequest) {
     phone_number: p.phoneNumber,
     conditions: p.conditions,
     preferred_lang: p.preferredLang,
-    bp_high_threshold: p.bpHighThreshold,
+    bp_high_threshold: p.bpHighThreshold != null ? Math.round(p.bpHighThreshold) : undefined,
     sugar_high_mmol: p.sugarHighMmol,
     nhis_number: p.nhisNumber,
     blood_group: p.bloodGroup,
@@ -120,8 +124,8 @@ function toUpdateBody(p: UpdateNeoSeniorProfileRequest) {
     fall_history: p.fallHistory,
     fall_last_date: p.fallLastDate,
     spo2_low_threshold: p.spo2LowThreshold,
-    heart_rate_high: p.heartRateHigh,
-    heart_rate_low: p.heartRateLow,
+    heart_rate_high: p.heartRateHigh != null ? Math.round(p.heartRateHigh) : undefined,
+    heart_rate_low: p.heartRateLow != null ? Math.round(p.heartRateLow) : undefined,
     weight_alert_delta_kg: p.weightAlertDeltaKg,
   };
 }
