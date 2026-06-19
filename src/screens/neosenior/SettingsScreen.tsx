@@ -123,7 +123,7 @@ export default function NeoSeniorSettingsScreen() {
 
       <Pressable
         style={({ pressed }) => [styles.rowCard, styles.rowCardMarginBottom, pressed && styles.rowCardPressed]}
-        onPress={() => Alert.alert(t('neoSeniorSettings.caregiverRequests'))}
+        onPress={() => navigation.navigate('CaregiverRequests')}
         accessibilityRole="button"
       >
         <View style={styles.iconCirclePeach}>

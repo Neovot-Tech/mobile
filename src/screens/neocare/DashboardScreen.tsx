@@ -73,6 +73,7 @@ export default function NeoCaresDashboardScreen() {
 
   // Seniors this NeoCare created who haven't activated yet (show "share code").
   const created = useCreatedSeniors((s) => s.created);
+  const linkRequests = useCreatedSeniors((s) => s.linkRequests);
   const reconcile = useCreatedSeniors((s) => s.reconcile);
   useEffect(() => {
     if (profiles.length) reconcile(profiles.map((p) => p.neoSeniorId));
@@ -120,6 +121,16 @@ export default function NeoCaresDashboardScreen() {
               </>
             )}
 
+            {/* Link requests sent to existing seniors — awaiting their consent */}
+            {linkRequests.length > 0 && (
+              <>
+                <Text style={styles.sectionLabel}>{t('neoCare.linkPendingTitle')}</Text>
+                {linkRequests.map((l) => (
+                  <LinkRequestCard key={l.nsr} code={l.nsr} />
+                ))}
+              </>
+            )}
+
             {profiles.length > 0 ? (
               <>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips}>
@@ -147,7 +158,7 @@ export default function NeoCaresDashboardScreen() {
 
                 {selected && <SeniorPanel key={selected.userId} profile={selected} />}
               </>
-            ) : created.length === 0 ? (
+            ) : created.length === 0 && linkRequests.length === 0 ? (
               <EmptyState onAdd={goAdd} />
             ) : null}
 
@@ -258,6 +269,19 @@ function PendingCreatedCard({ item }: { item: CreatedSenior }) {
         <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={18} color={Brand.primary} />
       </Pressable>
       <Text style={styles.pendingHint}>{t('neoCare.pendingHint')}</Text>
+    </View>
+  );
+}
+
+function LinkRequestCard({ code }: { code: string }) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.pendingCard}>
+      <View style={styles.pendingHeader}>
+        <Ionicons name="time-outline" size={18} color={Brand.mutedTeal} />
+        <Text style={styles.pendingName}>{t('neoCare.linkPendingTitle')}</Text>
+      </View>
+      <Text style={styles.pendingInstruction}>{t('neoCare.linkPendingBody', { code })}</Text>
     </View>
   );
 }

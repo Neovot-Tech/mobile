@@ -53,6 +53,7 @@ export type NeoSeniorAppStackParamList = {
   VitalTrend: { userId: string; vitalType: VitalType };
   MedicationEdit: { userId: string; medId?: string };
   EditProfile: { nsrId: string };
+  CaregiverRequests: undefined;
 };
 
 export type NeoCareAppStackParamList = {

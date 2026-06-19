@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { createLink } from '../services/onboarding.service';
 import { getApiErrorMessage } from '../services/http';
+import { useCreatedSeniors } from '../store/createdSeniors.store';
 import { Colors, Brand, Fonts, FontSize, Spacing, BorderRadius, MinTapTarget } from '../theme';
 
 /** Normalise free input into the NSR-XXXXX shape. */
@@ -30,10 +31,14 @@ interface LinkOrCreateChoiceProps {
 export default function LinkOrCreateChoice({ onLinked, onCreateNew }: LinkOrCreateChoiceProps) {
   const { t } = useTranslation();
   const [code, setCode] = useState('');
+  const addLinkRequest = useCreatedSeniors((s) => s.addLinkRequest);
 
   const linkMut = useMutation({
-    mutationFn: (nsr: string) => createLink(nsr),
-    onSuccess: () => {
+    mutationFn: (id: string) => createLink(id),
+    onSuccess: (_res, id) => {
+      // Remember the outgoing request locally — the backend doesn't list a
+      // NeoCare's pending links, so the dashboard shows it from here.
+      addLinkRequest(id);
       Alert.alert(t('neoCareLink.linkCta'), t('neoCareLink.linkPending'));
       onLinked();
     },

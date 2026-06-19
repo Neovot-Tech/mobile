@@ -10,36 +10,56 @@ export interface CreatedSenior {
   createdAt: string;
 }
 
+export interface LinkRequest {
+  nsr: NsrCode;
+  requestedAt: string;
+}
+
+/**
+ * Locally-tracked NeoCare "pending" items the backend can't list for us:
+ * - `created`: seniors this NeoCare created who haven't activated yet (share the code).
+ * - `linkRequests`: existing seniors this NeoCare sent a link request to (awaiting their consent).
+ * Both are reconciled away once the NSR shows up in linked-profiles (i.e. active).
+ */
 interface CreatedSeniorsState {
   created: CreatedSenior[];
+  linkRequests: LinkRequest[];
   add: (senior: { nsr: NsrCode; name: string }) => void;
-  /** Drop entries whose NSR now appears among the NeoCare's linked profiles
-   *  (i.e. the senior has activated), so the "share this code" card disappears. */
+  addLinkRequest: (nsr: NsrCode) => void;
   reconcile: (linkedNsrCodes: string[]) => void;
   hydrate: () => Promise<void>;
   clear: () => void;
 }
 
-function persist(created: CreatedSenior[]) {
-  void AsyncStorage.setItem(KEY, JSON.stringify(created));
+function persist(state: { created: CreatedSenior[]; linkRequests: LinkRequest[] }) {
+  void AsyncStorage.setItem(KEY, JSON.stringify(state));
 }
 
 export const useCreatedSeniors = create<CreatedSeniorsState>((set, get) => ({
   created: [],
+  linkRequests: [],
 
   add: ({ nsr, name }) => {
     if (get().created.some((c) => c.nsr === nsr)) return;
-    const next = [...get().created, { nsr, name, createdAt: new Date().toISOString() }];
-    set({ created: next });
-    persist(next);
+    const created = [...get().created, { nsr, name, createdAt: new Date().toISOString() }];
+    set({ created });
+    persist({ created, linkRequests: get().linkRequests });
+  },
+
+  addLinkRequest: (nsr) => {
+    if (get().linkRequests.some((l) => l.nsr === nsr)) return;
+    const linkRequests = [...get().linkRequests, { nsr, requestedAt: new Date().toISOString() }];
+    set({ linkRequests });
+    persist({ created: get().created, linkRequests });
   },
 
   reconcile: (linkedNsrCodes) => {
     const linked = new Set(linkedNsrCodes);
-    const next = get().created.filter((c) => !linked.has(c.nsr));
-    if (next.length !== get().created.length) {
-      set({ created: next });
-      persist(next);
+    const created = get().created.filter((c) => !linked.has(c.nsr));
+    const linkRequests = get().linkRequests.filter((l) => !linked.has(l.nsr));
+    if (created.length !== get().created.length || linkRequests.length !== get().linkRequests.length) {
+      set({ created, linkRequests });
+      persist({ created, linkRequests });
     }
   },
 
@@ -47,7 +67,8 @@ export const useCreatedSeniors = create<CreatedSeniorsState>((set, get) => ({
     const raw = await AsyncStorage.getItem(KEY);
     if (raw) {
       try {
-        set({ created: JSON.parse(raw) as CreatedSenior[] });
+        const parsed = JSON.parse(raw) as Partial<CreatedSeniorsState>;
+        set({ created: parsed.created ?? [], linkRequests: parsed.linkRequests ?? [] });
       } catch {
         /* ignore corrupt cache */
       }
@@ -55,7 +76,7 @@ export const useCreatedSeniors = create<CreatedSeniorsState>((set, get) => ({
   },
 
   clear: () => {
-    set({ created: [] });
+    set({ created: [], linkRequests: [] });
     void AsyncStorage.removeItem(KEY);
   },
 }));

@@ -200,7 +200,9 @@
     "addSenior": "Add a NeoSenior",
     "pendingTitle": "Waiting to be set up",
     "pendingInstruction": "Ask {{name}} to install Neovot, sign up on their phone, and enter this code:",
-    "pendingHint": "They'll appear here once they've set up their device."
+    "pendingHint": "They'll appear here once they've set up their device.",
+    "linkPendingTitle": "Awaiting their approval",
+    "linkPendingBody": "Your request to monitor {{code}} was sent. They'll appear here once they accept it on their device."
   },
   "neoCareLink": {
     "title": "Set up monitoring",
