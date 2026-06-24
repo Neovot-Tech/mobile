@@ -6,7 +6,7 @@ export type Role = 'neo_care' | 'neo_senior';
 // Auth stack
 export type AuthStackParamList = {
   Splash: undefined;
-  UserType: undefined;
+  UserType: { mode?: 'signin' | 'signup' };
   SignUp: { role: Role };
   SignIn: { role: Role };
   // OTP is used by both roles now. `sessionInfo` comes from request-otp on native;
@@ -62,8 +62,11 @@ export type NeoCareAppStackParamList = {
   HealthLogEntry: { logId: string };
   VitalTrend: { userId: string; vitalType: VitalType };
   EditProfile: { nsrId: string };
-  AddSenior: undefined; // link-or-create choice
-  CreateSenior: undefined; // new-senior profile form
+  AddSenior: undefined;
+  AwaitingConfirmation: { pendingUserName: string };
+  AccountConfirmed: { confirmedUserName: string };
+  CreateSenior: undefined;
+  MonitoringLogDetail: { logId: string };
 };
 
 // Root stack

@@ -7,7 +7,10 @@ import HealthLogEntryScreen from '../screens/shared/HealthLogEntryScreen';
 import EditProfileScreen from '../screens/shared/EditProfileScreen';
 import CaregiverRequestsScreen from '../screens/neosenior/CaregiverRequestsScreen';
 import AddSeniorScreen from '../screens/neocare/AddSeniorScreen';
+import AwaitingConfirmationScreen from '../screens/neocare/AwaitingConfirmationScreen';
+import AccountConfirmedScreen from '../screens/neocare/AccountConfirmedScreen';
 import CreateSeniorScreen from '../screens/neocare/CreateSeniorScreen';
+import DetailedMonitoringLogScreen from '../screens/neocare/DetailedMonitoringLogScreen';
 import { NeoSeniorAppStackParamList, NeoCareAppStackParamList } from './types';
 
 const NeoSeniorStack = createNativeStackNavigator<NeoSeniorAppStackParamList>();
@@ -34,7 +37,10 @@ export function NeoCareAppNavigator() {
       <NeoCareStack.Screen name="HealthLogEntry" component={HealthLogEntryScreen} />
       <NeoCareStack.Screen name="EditProfile" component={EditProfileScreen} />
       <NeoCareStack.Screen name="AddSenior" component={AddSeniorScreen} />
+      <NeoCareStack.Screen name="AwaitingConfirmation" component={AwaitingConfirmationScreen} />
+      <NeoCareStack.Screen name="AccountConfirmed" component={AccountConfirmedScreen} />
       <NeoCareStack.Screen name="CreateSenior" component={CreateSeniorScreen} />
+      <NeoCareStack.Screen name="MonitoringLogDetail" component={DetailedMonitoringLogScreen} />
     </NeoCareStack.Navigator>
   );
 }

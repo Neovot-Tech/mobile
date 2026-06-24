@@ -15,6 +15,7 @@ import { getApiErrorMessage } from '../../../services/http';
 export default function NeoCareProfileOnboardingScreen() {
   const { t } = useTranslation();
   const completeOnboarding = useAuthStore((s) => s.completeOnboarding);
+  const setUser = useAuthStore((s) => s.setUser);
   const user = useAuthStore((s) => s.user);
 
   const [fullName, setFullName] = useState(user?.displayName ?? '');
@@ -37,6 +38,9 @@ export default function NeoCareProfileOnboardingScreen() {
         address: address.trim() || undefined,
         livesWithNeoSenior: livesWith === t('neoCareOnboarding.liveWithElderlyYes'),
       });
+      if (user && fullName.trim()) {
+        setUser({ ...user, displayName: fullName.trim() });
+      }
       completeOnboarding();
     } catch (err) {
       setError(getApiErrorMessage(err));

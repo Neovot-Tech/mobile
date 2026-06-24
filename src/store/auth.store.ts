@@ -50,6 +50,8 @@ interface AuthState {
   setTokens: (tokens: StoredTokens) => void;
   /** Patch the in-memory user (e.g. attach the NSR code after self-register). */
   setUser: (user: AuthUser | null) => void;
+  /** Sync displayName from backend without replacing other user fields. */
+  patchDisplayName: (name: string) => void;
   /** Restore a persisted session on cold start. */
   hydrate: () => Promise<void>;
   logout: () => void;
@@ -102,6 +104,15 @@ export const useAuthStore = create<AuthState>((set) => ({
   setUser: (user) => {
     set({ user, isAuthenticated: user !== null });
     if (user) void AsyncStorage.setItem(USER_KEY, JSON.stringify(user));
+  },
+
+  patchDisplayName: (name) => {
+    set((state) => {
+      if (!state.user || !name.trim()) return {};
+      const updated = { ...state.user, displayName: name.trim() };
+      void AsyncStorage.setItem(USER_KEY, JSON.stringify(updated));
+      return { user: updated };
+    });
   },
 
   hydrate: async () => {

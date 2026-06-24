@@ -25,6 +25,22 @@ export async function updateFcmToken(fcmToken: string): Promise<{ message: strin
   return data;
 }
 
+/** Fetch the caller's own profile — used to sync displayName and display profile info. */
+export async function getMyProfile(): Promise<{
+  fullName: string | null;
+  address: string | null;
+  phone: string | null;
+}> {
+  const { data } = await http.get<{
+    user: { full_name: string | null; address?: string | null; phone?: string | null };
+  }>(Endpoints.users.data);
+  return {
+    fullName: data.user.full_name,
+    address: data.user.address ?? null,
+    phone: data.user.phone ?? null,
+  };
+}
+
 /** Full data export (DPA right to access). Shape is open-ended. */
 export async function getMyData(): Promise<Record<string, unknown>> {
   const { data } = await http.get<Record<string, unknown>>(Endpoints.users.data);

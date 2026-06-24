@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Alert } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import ElderlyProfileFlow from '../../../components/ElderlyProfileFlow';
+import BrandAlert from '../../../components/BrandAlert';
 import Greeting from '../../../components/Greeting';
 import { NeoCareOnboardingStackParamList } from '../../../navigation/types';
 import { useOnboardingStore } from '../../../store/onboarding.store';
@@ -25,25 +25,31 @@ export default function NeoCareProfileStep2Screen({ navigation }: Props) {
   const completeOnboarding = useAuthStore((s) => s.completeOnboarding);
   const careFirstName = useAuthStore((s) => (s.user?.displayName ?? '').split(' ')[0]);
   const [submitting, setSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handleSubmit = async (data: NeoSeniorProfilePayload) => {
     setSubmitting(true);
     try {
       setNeoSeniorProfile(data);
       const { neoSeniorId } = await submitNeoSeniorProfile(data);
-      // Remember the code locally so the dashboard can show "share this code"
-      // until the senior activates (no backend endpoint lists created profiles).
       addCreated({ nsr: neoSeniorId, name: data.fullName });
-      completeOnboarding(); // → NeoCare dashboard
+      completeOnboarding();
     } catch (err) {
-      Alert.alert(t('common.error'), getApiErrorMessage(err));
+      setErrorMsg(getApiErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <ElderlyProfileFlow
+    <>
+      <BrandAlert
+        visible={!!errorMsg}
+        title={t('common.error')}
+        message={errorMsg ?? ''}
+        onDismiss={() => setErrorMsg(null)}
+      />
+      <ElderlyProfileFlow
       title={t('neoCareOnboarding.step2Title')}
       greeting={
         careFirstName ? (
@@ -54,5 +60,6 @@ export default function NeoCareProfileStep2Screen({ navigation }: Props) {
       onSubmit={handleSubmit}
       submitting={submitting}
     />
+    </>
   );
 }
