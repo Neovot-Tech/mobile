@@ -13,12 +13,11 @@ export const ROOT_BASE = HOST;
  */
 export const Endpoints = {
   auth: {
-    neoCareRegister: '/auth/neo-care/register',
-    neoCareLogin: '/auth/neo-care/login',
-    seniorRequestOtp: '/auth/neo-senior/request-otp',
-    seniorVerifyOtp: '/auth/neo-senior/verify-otp',
-    seniorSession: '/auth/neo-senior/session',
-    biometricToken: '/auth/neo-senior/biometric-token',
+    // Unified — both roles share these endpoints; role is passed in the request body.
+    requestOtp: '/auth/request-otp',
+    verifyOtp: '/auth/verify-otp',
+    session: '/auth/session',
+    biometricToken: '/auth/biometric-token',
     refresh: '/auth/refresh',
     logout: '/auth/logout',
   },
@@ -77,6 +76,7 @@ export const Endpoints = {
   users: {
     fcmToken: '/users/me/fcm-token',
     data: '/users/me/data',
+    me: '/users/me',
     delete: '/users/me',
   },
   neoSenior: {

@@ -1,5 +1,8 @@
-import React from 'react';
-import { View, Text, Image, Pressable, StyleSheet, StatusBar } from 'react-native';
+import React, { useRef } from 'react';
+import {
+  View, Text, Image, Pressable, StyleSheet, StatusBar,
+  Animated, PanResponder,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,23 +15,58 @@ import { Fonts } from '../../theme';
 type Props = NativeStackScreenProps<AuthStackParamList, 'Splash'>;
 
 const TEAL = '#003B46';
-const CARD_FILL = '#FFFDF9';
+const CARD_FILL = '#FDF5E6';
 const CARD_STROKE = '#F2DCAE';
 const ARROW_GOLD = '#BE9F67';
 
-// Three-card deck constants
 const CARD_W = 345;
 const FRONT_H = 215;
-const PEEK = 50;
-const BACK1_W = Math.round(CARD_W * 0.95); // 328
-const BACK2_W = Math.round(CARD_W * 0.89); // 307
-const BACK1_LEFT = Math.round((CARD_W - BACK1_W) / 2); // 8
-const BACK2_LEFT = Math.round((CARD_W - BACK2_W) / 2); // 19
-const BACK1_TOP = Math.round(PEEK * 0.4); // 20
+
+const TRACK_H = 70;
+const CIRCLE_SIZE = 54;
+const TRACK_PAD = 8;
 
 export default function SplashScreen({ navigation }: Props) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+
+  const slideX = useRef(new Animated.Value(0)).current;
+  const trackWidthRef = useRef(0);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => { slideX.stopAnimation(); },
+      onPanResponderMove: (_, g) => {
+        const max = trackWidthRef.current - CIRCLE_SIZE - TRACK_PAD * 2;
+        slideX.setValue(Math.max(0, Math.min(g.dx, max)));
+      },
+      onPanResponderRelease: (_, g) => {
+        const max = trackWidthRef.current - CIRCLE_SIZE - TRACK_PAD * 2;
+        if (g.dx >= max * 0.7) {
+          Animated.timing(slideX, {
+            toValue: max,
+            duration: 150,
+            useNativeDriver: true,
+          }).start(() => navigation.navigate('UserType'));
+        } else {
+          Animated.spring(slideX, {
+            toValue: 0,
+            tension: 80,
+            friction: 8,
+            useNativeDriver: true,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
+  const textOpacity = slideX.interpolate({
+    inputRange: [0, 90],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
 
   return (
     <LinearGradient
@@ -36,10 +74,8 @@ export default function SplashScreen({ navigation }: Props) {
       locations={[0, 0.18, 0.5, 0.78, 1]}
       style={styles.root}
     >
-      {/* Translucent — gradient fills behind the status bar */}
       <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
 
-      {/* Topographic contour asset — absolute, lower half of screen */}
       <Image
         source={require('../../../assets/Topographic1.png')}
         style={styles.topographic}
@@ -64,13 +100,11 @@ export default function SplashScreen({ navigation }: Props) {
         </Pressable>
       </View>
 
-      {/* Three-card vertical deck — back cards peek above the front card */}
+      {/* Two-card rotated stack */}
       <View style={styles.cardStack}>
-        {/* Back card 2: furthest back, narrowest */}
-        <View style={[styles.card, styles.cardBack2]} />
-        {/* Back card 1: middle layer */}
-        <View style={[styles.card, styles.cardBack1]} />
-        {/* Front card: full content */}
+        {/* Back card — rotated clockwise so TR peeks upper-right, BL peeks lower-left */}
+        <View style={[styles.card, styles.cardBack]} />
+        {/* Front card with full content */}
         <View style={[styles.card, styles.cardFront]}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle} numberOfLines={2}>
@@ -85,28 +119,43 @@ export default function SplashScreen({ navigation }: Props) {
           <View style={styles.cardDivider} />
 
           <Text style={styles.cardTimestamp}>{t('splash.cardLogged')}</Text>
-          <Text style={styles.cardQuote}>{t('splash.cardQuote')}</Text>
+          <Text style={styles.cardQuote} numberOfLines={0}>
+            {t('splash.cardQuote')}
+          </Text>
 
-          <Text style={styles.cardNext}>{t('splash.cardNext')}</Text>
+          <Pressable style={styles.cardNextWrapper} onPress={() => {}}>
+            <Text style={styles.cardNext}>{t('splash.cardNext')}</Text>
+          </Pressable>
         </View>
       </View>
 
-      {/* Bottom: absolutely pinned — top edge lands at same y as topographic bottom */}
+      {/* Bottom pinned section */}
       <View style={[styles.bottom, { paddingBottom: Math.max(insets.bottom + 24, 48) }]}>
         <Text style={styles.tagline}>{t('splash.tagline1')}</Text>
         <Text style={[styles.tagline, styles.tagline2]}>{t('splash.tagline2')}</Text>
         <Text style={styles.subtitle}>{t('splash.subtitle')}</Text>
-        <Pressable
-          style={styles.getStarted}
-          onPress={() => navigation.navigate('UserType')}
-          accessibilityRole="button"
-          accessibilityLabel={t('splash.getStarted')}
+
+        {/* Slide-to-get-started track */}
+        <View
+          style={styles.sliderTrack}
+          onLayout={(e) => { trackWidthRef.current = e.nativeEvent.layout.width; }}
         >
-          <View style={styles.getStartedCircle}>
+          {/* Draggable circle — gesture attaches here */}
+          <Animated.View
+            style={[styles.sliderCircle, { transform: [{ translateX: slideX }] }]}
+            {...panResponder.panHandlers}
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel={t('splash.getStarted')}
+          >
             <Ionicons name="chevron-forward" size={26} color={ARROW_GOLD} />
-          </View>
-          <Text style={styles.getStartedText}>{t('splash.getStarted')}</Text>
-        </Pressable>
+          </Animated.View>
+
+          {/* Label fades as circle slides over it */}
+          <Animated.Text style={[styles.sliderLabel, { opacity: textOpacity }]}>
+            {t('splash.getStarted')}
+          </Animated.Text>
+        </View>
       </View>
     </LinearGradient>
   );
@@ -118,7 +167,7 @@ const styles = StyleSheet.create({
   topographic: {
     position: 'absolute',
     bottom: 244,
-    right: 0,    // flush to right screen edge; image overflows left (460px > 393px)
+    right: 0,
     width: 460,
     height: 570,
     opacity: 0.65,
@@ -142,53 +191,50 @@ const styles = StyleSheet.create({
   },
   loginText: { fontFamily: Fonts.body, fontSize: 13, color: TEAL },
 
-  // Container sized to front card height + the peek amount above it
+  // Back card sits above-right of the front card so its top-right corner (age area)
+  // peeks out. Clockwise rotation swings the right edge upward, reinforcing the peek.
   cardStack: {
     marginTop: 36,
     alignSelf: 'center',
     width: CARD_W,
-    height: FRONT_H + PEEK,
+    height: FRONT_H + 35,
+    overflow: 'visible',
   },
 
   card: {
+    position: 'absolute',
+    width: CARD_W,
+    height: FRONT_H,
     backgroundColor: CARD_FILL,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: CARD_STROKE,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.07,
-    shadowRadius: 16,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
   },
 
-  cardBack2: {
-    position: 'absolute',
-    top: 0,
-    left: BACK2_LEFT,
-    width: BACK2_W,
-    height: FRONT_H,
-  },
-  cardBack1: {
-    position: 'absolute',
-    top: BACK1_TOP,
-    left: BACK1_LEFT,
-    width: BACK1_W,
-    height: FRONT_H,
+  // Same anchor as the front card so the rotation spreads equally: TR peeks to the
+  // upper-right and BL peeks to the lower-left, keeping the composition centered.
+  cardBack: {
+    top: 20,
+    left: 0,
+    zIndex: 1,
+    transform: [{ rotate: '10deg' }],
   },
   cardFront: {
-    position: 'absolute',
-    top: PEEK,
+    top: 20,
     left: 0,
-    width: CARD_W,
-    height: FRONT_H,
-    padding: 24,
+    zIndex: 2,
+    padding: 20,
   },
 
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
   cardTitle: {
     fontFamily: Fonts.headingBold,
@@ -198,45 +244,45 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 12,
   },
-  ageBlock: { alignItems: 'center' },
+  ageBlock: { alignItems: 'flex-end' },
   ageLabel: {
     fontFamily: Fonts.headingBook,
-    fontSize: 11,
+    fontSize: 12,
     color: TEAL,
-    lineHeight: 16,
     opacity: 0.7,
   },
   ageValue: {
     fontFamily: Fonts.headingBold,
-    fontSize: 18,
+    fontSize: 16,
     color: TEAL,
-    lineHeight: 22,
   },
 
   cardDivider: {
     height: 1,
-    backgroundColor: CARD_STROKE,
-    marginVertical: 16,
-    opacity: 0.8,
+    backgroundColor: TEAL,
+    opacity: 0.15,
+    marginVertical: 12,
   },
 
   cardTimestamp: {
     fontFamily: Fonts.headingBook,
-    fontSize: 14,
+    fontSize: 15,
     color: TEAL,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   cardQuote: {
-    fontFamily: Fonts.headingBook,
-    fontSize: 16,
-    lineHeight: 24,
+    fontFamily: Fonts.body,
+    fontSize: 15,
+    lineHeight: 22,
     color: TEAL,
   },
-  cardNext: {
+  cardNextWrapper: {
     position: 'absolute',
-    right: 24,
+    right: 20,
     bottom: 16,
-    fontFamily: Fonts.heading,
+  },
+  cardNext: {
+    fontFamily: Fonts.headingBold,
     fontSize: 13,
     color: TEAL,
     textDecorationLine: 'underline',
@@ -265,22 +311,30 @@ const styles = StyleSheet.create({
     maxWidth: 331,
     marginBottom: 24,
   },
-  getStarted: {
-    height: 70,
+
+  // Slide-to-start
+  sliderTrack: {
+    height: TRACK_H,
     borderRadius: 40,
     backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: TRACK_PAD,
   },
-  getStartedCircle: {
+  sliderCircle: {
     position: 'absolute',
-    left: 8,
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    left: TRACK_PAD,
+    width: CIRCLE_SIZE,
+    height: CIRCLE_SIZE,
+    borderRadius: CIRCLE_SIZE / 2,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 2,
   },
-  getStartedText: { fontFamily: Fonts.bodyBold, fontSize: 17, color: '#FFFFFF' },
+  sliderLabel: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 17,
+    color: '#FFFFFF',
+  },
 });

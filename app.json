@@ -2,6 +2,7 @@
   "expo": {
     "name": "Neovot",
     "slug": "neovot",
+    "scheme": "neovot",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/logo-mini-red.png",
@@ -63,7 +64,8 @@
         }
       ],
       "expo-secure-store",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {
