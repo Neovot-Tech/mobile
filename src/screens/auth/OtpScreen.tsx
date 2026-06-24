@@ -12,7 +12,7 @@ import OtpInput from '../../components/OtpInput';
 import PrimaryButton from '../../components/PrimaryButton';
 import { AuthStackParamList } from '../../navigation/types';
 import { Colors, FontSize, Spacing } from '../../theme';
-import { verifySeniorOtp } from '../../services/auth.service';
+import { verifyOtp } from '../../services/auth.service';
 import { verifySeniorOtpWeb } from '../../services/seniorWebAuth';
 import { useAuthStore } from '../../store/auth.store';
 import { getApiErrorMessage } from '../../services/http';
@@ -22,7 +22,7 @@ type Props = NativeStackScreenProps<AuthStackParamList, 'Otp'>;
 const OTP_LENGTH = 6;
 
 export default function OtpScreen({ route }: Props) {
-  const { phone: initialPhone, sessionInfo } = route.params;
+  const { phone: initialPhone, sessionInfo, role } = route.params;
   const { t } = useTranslation();
   const { signIn, beginOnboarding } = useAuthStore();
 
@@ -31,20 +31,56 @@ export default function OtpScreen({ route }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isSenior = role === 'neo_senior';
+
   const handleVerify = async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = Platform.OS === 'web'
-        ? await verifySeniorOtpWeb(otp)
-        : await verifySeniorOtp({ sessionInfo: sessionInfo!, code: otp, phone });
-      const { user, tokens, onboarding } = result;
-      // Route by the senior's actual backend state, not which button they tapped:
-      // already activated + linked → app; otherwise the right onboarding step.
-      if (onboarding === 'ready') {
-        await signIn(user, tokens);
+      if (Platform.OS === 'web') {
+        const result = await verifySeniorOtpWeb(otp, role);
+        const { user, tokens } = result;
+        if (result.user.role === 'neo_senior') {
+          const step = result.seniorOnboarding!;
+          if (step === 'ready') {
+            await signIn(user, tokens);
+          } else {
+            await beginOnboarding(user, tokens, step);
+          }
+        } else {
+          if (result.created) {
+            await beginOnboarding(user, tokens);
+          } else {
+            await signIn(user, tokens);
+          }
+        }
+        return;
+      }
+
+      const result = await verifyOtp({
+        sessionInfo: sessionInfo!,
+        code: otp,
+        role,
+        phone,
+      });
+      const { user, tokens } = result;
+
+      // Always route on the server-confirmed role, never the client-supplied one.
+      // This handles: existing user signing up again, and wrong-role selection.
+      if (result.user.role === 'neo_senior') {
+        const onboarding = result.seniorOnboarding!;
+        if (onboarding === 'ready') {
+          await signIn(user, tokens);
+        } else {
+          await beginOnboarding(user, tokens, onboarding);
+        }
       } else {
-        await beginOnboarding(user, tokens, onboarding);
+        // NeoCare: new accounts go through onboarding; returning users go straight to app.
+        if (result.created) {
+          await beginOnboarding(user, tokens);
+        } else {
+          await signIn(user, tokens);
+        }
       }
     } catch (err) {
       setError(getApiErrorMessage(err));
@@ -57,11 +93,11 @@ export default function OtpScreen({ route }: Props) {
     <ScreenShell
       showTopographic
       headerRight={<BackPill />}
-      title={t('auth.neoSenior')}
-      subtitle={t('auth.neoSeniorSignUpSubtitle')}
+      title={isSenior ? t('auth.neoSenior') : t('auth.neoCare')}
+      subtitle={isSenior ? t('auth.neoSeniorSignUpSubtitle') : t('auth.signInSubtitle')}
     >
       <FormCard>
-        <PhoneInput value={phone} onChangeText={setPhone} />
+        <PhoneInput value={phone} onChangeText={setPhone} readOnly />
         <LabeledDivider label={t('auth.enterOtp')} />
         <OtpInput length={OTP_LENGTH} value={otp} onChange={setOtp} />
         <PrimaryButton

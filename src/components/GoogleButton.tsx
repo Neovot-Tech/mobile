@@ -1,22 +1,28 @@
 import React from 'react';
-import { Pressable, Text, StyleSheet } from 'react-native';
+import { Pressable, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, FontSize, MinTapTarget, Spacing } from '../theme';
 
 interface GoogleButtonProps {
   label: string;
+  loading?: boolean;
   onPress: () => void;
 }
 
-export default function GoogleButton({ label, onPress }: GoogleButtonProps) {
+export default function GoogleButton({ label, loading = false, onPress }: GoogleButtonProps) {
   return (
     <Pressable
-      style={styles.button}
-      onPress={onPress}
+      style={[styles.button, loading && styles.disabled]}
+      onPress={loading ? undefined : onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={{ busy: loading }}
     >
-      <Ionicons name="logo-google" size={18} color="#4285F4" />
+      {loading ? (
+        <ActivityIndicator size="small" color={Colors.primary} />
+      ) : (
+        <Ionicons name="logo-google" size={18} color="#4285F4" />
+      )}
       <Text style={styles.label}>{label}</Text>
     </Pressable>
   );
@@ -34,5 +40,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: Colors.surface,
   },
+  disabled: { opacity: 0.6 },
   label: { color: Colors.textPrimary, fontSize: FontSize.base, fontWeight: '600' },
 });

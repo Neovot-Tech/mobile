@@ -103,13 +103,28 @@ export async function uploadToGcs(
   mimeType: string,
 ): Promise<void> {
   if (Platform.OS === 'web') {
-    const fileRes = await fetch(fileUri);
-    const blob = await fileRes.blob();
-    const res = await fetch(signedUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': mimeType },
-      body: blob,
-    });
+    let blob: Blob;
+    try {
+      const fileRes = await fetch(fileUri);
+      blob = await fileRes.blob();
+    } catch {
+      throw new Error('Could not read the recording/photo to upload.');
+    }
+    let res: Response;
+    try {
+      res = await fetch(signedUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': mimeType },
+        body: blob,
+      });
+    } catch {
+      // A "Failed to fetch" here (no status) means the browser blocked the
+      // cross-origin PUT — the GCS bucket needs a CORS policy allowing PUT from
+      // this web origin. (Native uploads don't hit browser CORS.)
+      throw new Error(
+        'Storage blocked the upload (CORS). The GCS bucket needs CORS configured for this web origin.',
+      );
+    }
     if (!res.ok) throw new Error(`Upload failed (${res.status})`);
     return;
   }

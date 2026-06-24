@@ -5,8 +5,9 @@ import {
   ConfirmationResult,
 } from 'firebase/auth';
 import { firebaseAuth } from './firebaseApp.web';
-import { seniorSessionCall } from './auth.service';
+import { signInWithGoogle } from './auth.service';
 import type { SeniorAuthResult } from './auth.service';
+import type { UserRole } from '../store/auth.store';
 
 let _confirmation: ConfirmationResult | null = null;
 let _recaptchaConfigured = false;
@@ -40,9 +41,9 @@ export async function requestSeniorOtpWeb(phone: string): Promise<void> {
   _confirmation = await signInWithPhoneNumber(firebaseAuth, phone, verifier);
 }
 
-export async function verifySeniorOtpWeb(code: string): Promise<SeniorAuthResult> {
+export async function verifySeniorOtpWeb(code: string, role: UserRole): Promise<SeniorAuthResult> {
   if (!_confirmation) throw new Error('Request OTP before verifying.');
   const cred = await _confirmation.confirm(code);
   const idToken = await cred.user.getIdToken();
-  return seniorSessionCall(idToken);
+  return signInWithGoogle({ idToken, role });
 }

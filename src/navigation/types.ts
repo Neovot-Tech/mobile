@@ -9,14 +9,15 @@ export type AuthStackParamList = {
   UserType: undefined;
   SignUp: { role: Role };
   SignIn: { role: Role };
-  // OTP is the NeoSenior-only path. On native `sessionInfo` comes from request-otp;
-  // on web it is omitted (Firebase phone auth manages the confirmation internally).
-  Otp: { phone: string; sessionInfo?: string; mode: 'signup' | 'signin' };
+  // OTP is used by both roles now. `sessionInfo` comes from request-otp on native;
+  // omitted on web (Firebase JS SDK manages confirmation internally).
+  Otp: { phone: string; sessionInfo?: string; role: Role };
 };
 
-// NeoCare onboarding stack
-// Step1 = link-or-create choice; Step2 = new-senior profile form.
+// NeoCare onboarding stack — single profile-collection step after sign-up.
+// Step1/Step2 retained in the type only to avoid errors in their legacy files.
 export type NeoCareOnboardingStackParamList = {
+  NeoCareProfileOnboarding: undefined;
   NeoCareProfileStep1: undefined;
   NeoCareProfileStep2: undefined;
 };

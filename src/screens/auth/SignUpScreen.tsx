@@ -6,68 +6,45 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import ScreenShell from '../../components/ScreenShell';
 import BackPill from '../../components/BackPill';
 import FormCard from '../../components/FormCard';
-import LabeledInput from '../../components/LabeledInput';
+import GoogleButton from '../../components/GoogleButton';
+import LabeledDivider from '../../components/LabeledDivider';
 import PhoneInput from '../../components/PhoneInput';
 import PrimaryButton from '../../components/PrimaryButton';
 import { AuthStackParamList } from '../../navigation/types';
 import { Colors, FontSize, Spacing } from '../../theme';
-import {
-  registerNeoCare,
-  loginNeoCare,
-  requestSeniorOtp,
-} from '../../services/auth.service';
+import { requestOtp } from '../../services/auth.service';
 import { requestSeniorOtpWeb } from '../../services/seniorWebAuth';
-import { useAuthStore } from '../../store/auth.store';
 import { getApiErrorMessage } from '../../services/http';
+import { useGoogleAuth } from '../../hooks/useGoogleAuth';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'SignUp'>;
 
 export default function SignUpScreen({ navigation, route }: Props) {
   const { role } = route.params;
   const { t } = useTranslation();
-  const beginOnboarding = useAuthStore((s) => s.beginOnboarding);
 
   const isSenior = role === 'neo_senior';
 
-  // NeoCare fields
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  // NeoSenior field
   const [phone, setPhone] = useState('');
-
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleNeoCareSignUp = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const e = email.trim();
-      const name = fullName.trim();
-      await registerNeoCare(e, password, name);
-      // Sign in to obtain tokens, then route through onboarding (create the
-      // elderly profile) before the dashboard appears.
-      const { user, tokens } = await loginNeoCare(e, password);
-      await beginOnboarding(user, tokens);
-    } catch (err) {
-      setError(getApiErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { googleLoading, googleError, clearGoogleError, promptGoogleSignIn } = useGoogleAuth(role);
 
-  const handleSeniorSignUp = async () => {
+  const displayError = error ?? googleError;
+
+  const handlePhoneSubmit = async () => {
+    clearGoogleError();
     setLoading(true);
     setError(null);
     try {
       const ph = phone.trim();
       if (Platform.OS === 'web') {
         await requestSeniorOtpWeb(ph);
-        navigation.navigate('Otp', { phone: ph, mode: 'signup' });
+        navigation.navigate('Otp', { phone: ph, role });
       } else {
-        const { sessionInfo } = await requestSeniorOtp(ph);
-        navigation.navigate('Otp', { phone: ph, sessionInfo, mode: 'signup' });
+        const { sessionInfo } = await requestOtp(ph);
+        navigation.navigate('Otp', { phone: ph, sessionInfo, role });
       }
     } catch (err) {
       setError(getApiErrorMessage(err));
@@ -75,8 +52,6 @@ export default function SignUpScreen({ navigation, route }: Props) {
       setLoading(false);
     }
   };
-
-  const neoCareDisabled = !fullName.trim() || !email.trim() || !password;
 
   return (
     <ScreenShell
@@ -86,52 +61,22 @@ export default function SignUpScreen({ navigation, route }: Props) {
       subtitle={isSenior ? t('auth.neoSeniorSignUpSubtitle') : t('auth.signUpSubtitle')}
     >
       <FormCard>
-        {isSenior ? (
-          <>
-            <PhoneInput value={phone} onChangeText={setPhone} />
-            <PrimaryButton
-              label={t('auth.signUp')}
-              disabled={!phone.trim()}
-              loading={loading}
-              onPress={handleSeniorSignUp}
-            />
-          </>
-        ) : (
-          <>
-            <LabeledInput
-              label={t('auth.fullName')}
-              placeholder={t('auth.fullNamePlaceholder')}
-              value={fullName}
-              onChangeText={setFullName}
-              autoCapitalize="words"
-            />
-            <LabeledInput
-              label={t('auth.email')}
-              placeholder={t('auth.emailPlaceholder')}
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              autoComplete="email"
-            />
-            <LabeledInput
-              label={t('auth.password')}
-              placeholder={t('auth.passwordPlaceholder')}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              autoComplete="password-new"
-            />
-            <PrimaryButton
-              label={t('auth.signUp')}
-              disabled={neoCareDisabled}
-              loading={loading}
-              onPress={handleNeoCareSignUp}
-            />
-          </>
-        )}
+        <GoogleButton
+          label={t('auth.continueWithGoogle')}
+          loading={googleLoading}
+          onPress={promptGoogleSignIn}
+        />
+        <LabeledDivider label={t('auth.orSignUpWith')} />
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        <PhoneInput value={phone} onChangeText={setPhone} />
+        <PrimaryButton
+          label={t('auth.signUp')}
+          disabled={!phone.trim()}
+          loading={loading}
+          onPress={handlePhoneSubmit}
+        />
+
+        {displayError ? <Text style={styles.error}>{displayError}</Text> : null}
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>{t('auth.alreadyHaveAccount')} </Text>

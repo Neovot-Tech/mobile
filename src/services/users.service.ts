@@ -2,6 +2,22 @@
 import { http } from './http';
 import { Endpoints } from '../constants/api';
 
+interface UpdateMeParams {
+  fullName?: string;
+  address?: string;
+  livesWithNeoSenior?: boolean;
+}
+
+/** Update the caller's own user record (NeoCare: name, address, lives-with flag). */
+export async function updateMe(params: UpdateMeParams): Promise<{ message: string }> {
+  const body: Record<string, unknown> = {};
+  if (params.fullName !== undefined) body.full_name = params.fullName;
+  if (params.address !== undefined) body.address = params.address;
+  if (params.livesWithNeoSenior !== undefined) body.lives_with_neo_senior = params.livesWithNeoSenior;
+  const { data } = await http.put<{ message: string }>(Endpoints.users.me, body);
+  return data;
+}
+
 export async function updateFcmToken(fcmToken: string): Promise<{ message: string }> {
   const { data } = await http.put<{ message: string }>(Endpoints.users.fcmToken, {
     fcm_token: fcmToken,
