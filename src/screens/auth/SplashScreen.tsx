@@ -92,7 +92,7 @@ export default function SplashScreen({ navigation }: Props) {
         />
         <Pressable
           style={styles.loginPill}
-          onPress={() => navigation.navigate('SignIn', { role: 'neo_care' })}
+          onPress={() => navigation.navigate('UserType', { mode: 'signin' })}
           accessibilityRole="button"
           accessibilityLabel={t('splash.logIn')}
         >

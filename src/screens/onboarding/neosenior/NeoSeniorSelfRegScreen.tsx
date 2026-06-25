@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Alert } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import ElderlyProfileFlow from '../../../components/ElderlyProfileFlow';
+import BrandAlert from '../../../components/BrandAlert';
 import { NeoSeniorOnboardingStackParamList } from '../../../navigation/types';
 import { useOnboardingStore } from '../../../store/onboarding.store';
 import {
@@ -18,6 +18,7 @@ export default function NeoSeniorSelfRegScreen({ navigation }: Props) {
   const { t } = useTranslation();
   const { setNeoSeniorProfile, setGeneratedNeoSeniorId } = useOnboardingStore();
   const [submitting, setSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handleSubmit = async (data: NeoSeniorProfilePayload) => {
     setSubmitting(true);
@@ -27,18 +28,26 @@ export default function NeoSeniorSelfRegScreen({ navigation }: Props) {
       setGeneratedNeoSeniorId(neoSeniorId);
       navigation.navigate('NeoSeniorIdReveal', { neoSeniorId });
     } catch (err) {
-      Alert.alert(t('common.error'), getApiErrorMessage(err));
+      setErrorMsg(getApiErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <ElderlyProfileFlow
+    <>
+      <BrandAlert
+        visible={!!errorMsg}
+        title={t('common.error')}
+        message={errorMsg ?? ''}
+        onDismiss={() => setErrorMsg(null)}
+      />
+      <ElderlyProfileFlow
       title={t('neoSeniorOnboarding.step2Title')}
       subtitle={t('neoSeniorOnboarding.step2Subtitle')}
       onSubmit={handleSubmit}
       submitting={submitting}
     />
+    </>
   );
 }

@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, Share, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, Share } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 
 import Screen from '../../components/Screen';
+import BrandAlert from '../../components/BrandAlert';
 import { getDoctorSummary, downloadSummaryPdf, SummaryWindow } from '../../services/summary.service';
 import { getApiErrorMessage } from '../../services/http';
 import { useAuthStore } from '../../store/auth.store';
@@ -52,6 +53,7 @@ export default function NeoSeniorSummaryScreen() {
 
   const [days, setDays] = useState<SummaryWindow>(7);
   const [exporting, setExporting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const summaryQ = useQuery({
     queryKey: ['neoSeniorSummary', userId, days],
@@ -67,7 +69,7 @@ export default function NeoSeniorSummaryScreen() {
       const uri = await downloadSummaryPdf(userId, days, idToken);
       await Share.share({ url: uri, message: t('neoCareSummary.title') });
     } catch (e) {
-      Alert.alert(t('neoCareSummary.exportFailed'), getApiErrorMessage(e));
+      setErrorMsg(getApiErrorMessage(e));
     } finally {
       setExporting(false);
     }
@@ -75,6 +77,12 @@ export default function NeoSeniorSummaryScreen() {
 
   return (
     <Screen contentContainerStyle={styles.content}>
+      <BrandAlert
+        visible={!!errorMsg}
+        title={t('neoCareSummary.exportFailed')}
+        message={errorMsg ?? ''}
+        onDismiss={() => setErrorMsg(null)}
+      />
       <Text style={styles.h1}>{t('neoCareSummary.title')}</Text>
       <Text style={styles.subtitle}>{t('neoCareSummary.subtitle')}</Text>
 

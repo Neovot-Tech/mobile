@@ -1,133 +1,311 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, Share, Alert } from 'react-native';
-import { useTranslation } from 'react-i18next';
+import React, { useState, useMemo } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  Pressable,
+  ActivityIndicator,
+  Share,
+  StatusBar,
+  Platform,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 
-import Screen from '../../components/Screen';
+import Logo from '../../components/Logo';
+import BrandAlert from '../../components/BrandAlert';
 import SeniorSelector from '../../components/SeniorSelector';
 import { useSelectedSenior } from '../../store/selectedSenior.store';
-import { getDoctorSummary, downloadSummaryPdf, SummaryWindow } from '../../services/summary.service';
-import { getApiErrorMessage } from '../../services/http';
 import { useAuthStore } from '../../store/auth.store';
-import { Colors, Brand, Fonts, FontSize, Spacing, BorderRadius, MinTapTarget } from '../../theme';
+import { getDoctorSummary, downloadSummaryPdf, SummaryWindow } from '../../services/summary.service';
+import { getMedications, getAdherence } from '../../services/medications.service';
+import { getApiErrorMessage } from '../../services/http';
+import { Colors, Brand, Fonts, FontSize, Spacing, BorderRadius } from '../../theme';
 
-const WINDOWS: SummaryWindow[] = [7, 14, 30];
+// ─── Screen-specific tokens ───────────────────────────────────────────────────
+const GOLD = '#F4B459';
+const CARD_BORDER = '#FFE6D5';
+const CARD_HEADER_BG = Brand.primary;
+const DASHED_BORDER = Brand.mutedTeal;
+const DIVIDER = '#EFEBE4';
 
-function humanize(key: string): string {
-  return key.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
+// ─── Filter chip config ───────────────────────────────────────────────────────
+const CHIPS: { label: string; days: SummaryWindow }[] = [
+  { label: 'This Week', days: 7 },
+  { label: '2 Weeks', days: 14 },
+  { label: 'This Month', days: 30 },
+];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function buildDateRange(days: number): string {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(end.getDate() - days + 1);
+  const fmt = (d: Date) =>
+    d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  return `${fmt(start)} – ${fmt(end)}`;
 }
 
-/** Render an open-ended JSON value (the summary shapes aren't fixed). */
-function renderValue(value: unknown, noneLabel: string): React.ReactNode {
-  if (value === null || value === undefined || (Array.isArray(value) && value.length === 0)) {
-    return <Text style={styles.muted}>{noneLabel}</Text>;
+function extractNarrative(value: unknown): string | null {
+  if (!value) return null;
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  if (typeof value === 'object') {
+    const v = value as Record<string, unknown>;
+    for (const key of ['summary', 'narrative', 'text', 'description', 'overview', 'content']) {
+      if (typeof v[key] === 'string' && (v[key] as string).trim()) {
+        return (v[key] as string).trim();
+      }
+    }
+    const parts = Object.values(v).filter(
+      (x): x is string => typeof x === 'string' && !!x.trim(),
+    );
+    if (parts.length) return parts.join('. ');
   }
-  if (Array.isArray(value)) {
-    return (
-      <View style={{ gap: Spacing.xs }}>
-        {value.map((item, i) => (
-          <Text key={i} style={styles.value}>
-            • {typeof item === 'object' ? Object.values(item as object).filter((v) => v != null).join(' · ') : String(item)}
+  return null;
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function SummaryCard({
+  title,
+  trailing,
+  children,
+}: {
+  title: string;
+  trailing?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={card.wrapper}>
+      <View style={card.header}>
+        <Text style={card.title}>{title}</Text>
+        {trailing}
+      </View>
+      <View style={card.body}>{children}</View>
+    </View>
+  );
+}
+
+function MedRow({
+  name,
+  dosage,
+  frequency,
+  showDivider,
+}: {
+  name: string;
+  dosage?: string;
+  frequency?: string;
+  showDivider: boolean;
+}) {
+  const parts = [
+    [name, dosage].filter(Boolean).join(' '),
+    frequency || 'as directed',
+    'ongoing',
+  ];
+  return (
+    <>
+      {showDivider && <View style={card.medDivider} />}
+      <View style={card.medRow}>
+        {parts.map((p, i) => (
+          <Text key={i} style={[card.medCell, i === 0 && card.medName]} numberOfLines={2}>
+            {p}
           </Text>
         ))}
       </View>
-    );
-  }
-  if (typeof value === 'object') {
-    return (
-      <View style={{ gap: Spacing.xs }}>
-        {Object.entries(value as Record<string, unknown>).map(([k, v]) => (
-          <View key={k} style={styles.kvRow}>
-            <Text style={styles.kvKey}>{humanize(k)}</Text>
-            <Text style={styles.kvVal}>{v == null ? '—' : String(v)}</Text>
-          </View>
-        ))}
-      </View>
-    );
-  }
-  return <Text style={styles.value}>{String(value)}</Text>;
+    </>
+  );
 }
 
+// ─── Main screen ──────────────────────────────────────────────────────────────
+
 export default function NeoCareSummaryScreen() {
-  const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
+  const { user } = useAuthStore();
   const senior = useSelectedSenior((s) => s.senior);
   const userId = senior?.userId ?? '';
 
-  const [days, setDays] = useState<SummaryWindow>(7);
+  const [summaryDays, setSummaryDays] = useState<SummaryWindow>(7);
   const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const firstName = user?.displayName?.split(' ')[0] ?? '';
 
   const summaryQ = useQuery({
-    queryKey: ['summary', userId, days],
-    queryFn: () => getDoctorSummary(userId, days),
+    queryKey: ['doctorSummary', userId, summaryDays],
+    queryFn: () => getDoctorSummary(userId, summaryDays),
     enabled: !!userId,
   });
-  const data = summaryQ.data;
 
-  const handleShare = async () => {
+  const medsQ = useQuery({
+    queryKey: ['nc-meds-summary', userId],
+    queryFn: () => getMedications(userId),
+    enabled: !!userId,
+  });
+
+  const adherenceQ = useQuery({
+    queryKey: ['nc-adherence-summary', userId, summaryDays],
+    queryFn: () => getAdherence(userId, summaryDays),
+    enabled: !!userId,
+  });
+
+  const activeMeds = useMemo(() => (medsQ.data ?? []).filter((m) => m.active), [medsQ.data]);
+
+  const adherencePct = useMemo(() => {
+    const rows = adherenceQ.data?.adherence ?? [];
+    const taken = rows.reduce((s, r) => s + r.taken, 0);
+    const total = rows.reduce((s, r) => s + r.taken + r.missed, 0);
+    return total > 0 ? Math.round((taken / total) * 100) : 0;
+  }, [adherenceQ.data]);
+
+  const vitalsNarrative = extractNarrative(summaryQ.data?.vitalsSummary);
+  const symptomsNarrative = extractNarrative(summaryQ.data?.symptomLog);
+
+  const conditionList =
+    senior?.conditions?.length ? senior.conditions.join(', ') : 'No conditions recorded';
+
+  const handleGenerateSummary = async () => {
+    if (!userId) return;
     setExporting(true);
     try {
       const idToken = useAuthStore.getState().idToken ?? '';
-      const uri = await downloadSummaryPdf(userId, days, idToken);
-      await Share.share({ url: uri, message: t('neoCareSummary.title') });
+      const uri = await downloadSummaryPdf(userId, summaryDays, idToken);
+      // Web: browser download is already triggered inside downloadSummaryPdf.
+      if (Platform.OS !== 'web') {
+        await Share.share({ url: uri, message: `Health summary for ${senior?.fullName ?? 'patient'}` });
+      }
     } catch (e) {
-      Alert.alert(t('neoCareSummary.exportFailed'), getApiErrorMessage(e));
+      setExportError(getApiErrorMessage(e));
     } finally {
       setExporting(false);
     }
   };
 
-  return (
-    <Screen contentContainerStyle={styles.content}>
-        <Text style={styles.h1}>{t('neoCareSummary.title')}</Text>
-        <Text style={styles.subtitle}>{t('neoCareSummary.subtitle')}</Text>
-        <SeniorSelector />
+  const contentLoading = summaryQ.isLoading || medsQ.isLoading || adherenceQ.isLoading;
 
-        {senior && (
+  return (
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
+
+      {/* Header */}
+      <View style={styles.header}>
+        <Logo />
+        {firstName ? (
+          <Text style={styles.greeting}>Hello, {firstName}</Text>
+        ) : null}
+      </View>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 100 }]}
+      >
+        {/* Senior selector */}
+        <View style={styles.selectorRow}>
+          <SeniorSelector />
+        </View>
+
+        {/* Filter chips */}
+        <View style={styles.chipRow}>
+          {CHIPS.map((c) => {
+            const active = c.days === summaryDays;
+            return (
+              <Pressable
+                key={c.days}
+                onPress={() => setSummaryDays(c.days)}
+                accessibilityRole="button"
+                style={[styles.chip, active ? styles.chipActive : styles.chipInactive]}
+              >
+                <Text style={[styles.chipText, active ? styles.chipTextActive : styles.chipTextInactive]}>
+                  {c.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {!senior ? (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyText}>Select a senior to view their summary.</Text>
+          </View>
+        ) : (
           <>
-            {/* Window selector */}
-            <View style={styles.segment}>
-              {WINDOWS.map((w) => {
-                const active = w === days;
-                return (
-                  <Pressable
-                    key={w}
-                    onPress={() => setDays(w)}
-                    style={[styles.segmentBtn, active && styles.segmentActive]}
-                    accessibilityRole="button"
-                  >
-                    <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                      {t('neoCareSummary.days', { count: w })}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+            {/* Patient identity context block */}
+            <View style={styles.patientBlock}>
+              <View style={styles.seniorTag}>
+                <Ionicons name="person-circle-outline" size={13} color={Brand.mutedTeal} />
+                <Text style={styles.seniorTagText}>Linked NeoSenior</Text>
+              </View>
+              <Text style={styles.patientName}>{senior.fullName}</Text>
+              <View style={styles.patientRow}>
+                <Text style={styles.patientLabel}>Condition</Text>
+                <Text style={styles.patientValue} numberOfLines={2}>
+                  {conditionList}
+                </Text>
+              </View>
+              <View style={styles.patientRow}>
+                <Text style={styles.patientLabel}>Reporting Period</Text>
+                <Text style={styles.patientValue}>{buildDateRange(summaryDays)}</Text>
+              </View>
             </View>
 
-            {summaryQ.isLoading ? (
+            {contentLoading ? (
               <ActivityIndicator color={Brand.primary} style={{ marginTop: Spacing['2xl'] }} />
-            ) : !data ? (
-              <Text style={styles.muted}>{t('neoCareSummary.empty')}</Text>
             ) : (
               <>
-                <Section title={t('neoCareSummary.sectionProfile')}>{renderValue(data.profile, t('neoCareSummary.none'))}</Section>
-                <Section title={t('neoCareSummary.sectionVitals')}>{renderValue(data.vitalsSummary, t('neoCareSummary.none'))}</Section>
-                <Section title={t('neoCareSummary.sectionAdherence')}>{renderValue(data.medicationAdherence, t('neoCareSummary.none'))}</Section>
-                <Section title={t('neoCareSummary.sectionSymptoms')}>{renderValue(data.symptomLog, t('neoCareSummary.none'))}</Section>
-                <AiFlagsSection title={t('neoCareSummary.sectionFlags')}>{renderValue(data.aiFlags, t('neoCareSummary.none'))}</AiFlagsSection>
+                {/* Medication Adherence Card */}
+                <SummaryCard
+                  title="Medication Adherence"
+                  trailing={
+                    <Text style={card.adherencePct}>{adherencePct}%</Text>
+                  }
+                >
+                  {activeMeds.length > 0 ? (
+                    activeMeds.map((m, idx) => (
+                      <MedRow
+                        key={m.id}
+                        name={m.name}
+                        dosage={m.dosage}
+                        frequency={m.frequency}
+                        showDivider={idx > 0}
+                      />
+                    ))
+                  ) : (
+                    <Text style={card.noDataText}>No active medications on record.</Text>
+                  )}
+                </SummaryCard>
 
+                {/* Vitals Summary Card */}
+                <SummaryCard title="Vitals Summary">
+                  <Text style={card.narrativeText}>
+                    {vitalsNarrative || 'No vitals summary available for this period.'}
+                  </Text>
+                </SummaryCard>
+
+                {/* Symptoms Summary Card */}
+                <SummaryCard title="Symptoms Summary">
+                  <Text style={card.narrativeText}>
+                    {symptomsNarrative || 'No symptom summary available for this period.'}
+                  </Text>
+                </SummaryCard>
+
+                {/* Generate Summary button */}
                 <Pressable
-                  style={[styles.exportBtn, exporting && styles.exportDisabled]}
-                  onPress={handleShare}
+                  onPress={handleGenerateSummary}
                   disabled={exporting}
                   accessibilityRole="button"
+                  style={({ pressed }) => [
+                    styles.generateBtn,
+                    (pressed || exporting) && styles.generateBtnPressed,
+                  ]}
                 >
                   {exporting ? (
                     <ActivityIndicator color={Colors.white} />
                   ) : (
                     <>
-                      <Ionicons name="share-outline" size={20} color={Colors.white} />
-                      <Text style={styles.exportText}>{t('neoCareSummary.exportPdf')}</Text>
+                      <Ionicons name="document-text-outline" size={20} color={Colors.white} style={{ marginRight: 10 }} />
+                      <Text style={styles.generateBtnText}>Generate Summary</Text>
                     </>
                   )}
                 </Pressable>
@@ -135,94 +313,225 @@ export default function NeoCareSummaryScreen() {
             )}
           </>
         )}
-    </Screen>
-  );
-}
+      </ScrollView>
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {children}
+      <BrandAlert
+        visible={!!exportError}
+        title="Export Failed"
+        message={exportError ?? ''}
+        onDismiss={() => setExportError(null)}
+      />
     </View>
   );
 }
 
-function AiFlagsSection({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <View style={styles.aiSection}>
-      <View style={styles.aiSectionHeader}>
-        <Ionicons name="flash-outline" size={16} color="#9a5b14" />
-        <Text style={styles.aiSectionTitle}>{title}</Text>
-      </View>
-      {children}
-    </View>
-  );
-}
+// ─── Card sub-styles ──────────────────────────────────────────────────────────
+
+const card = StyleSheet.create({
+  wrapper: {
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    borderRadius: BorderRadius.lg,
+    overflow: 'hidden',
+    marginBottom: Spacing.xl,
+  },
+  header: {
+    backgroundColor: CARD_HEADER_BG,
+    height: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.base,
+    justifyContent: 'space-between',
+  },
+  title: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.white,
+  },
+  adherencePct: {
+    fontFamily: Fonts.headingBold,
+    fontSize: 15,
+    fontWeight: '700',
+    color: GOLD,
+  },
+  body: {
+    backgroundColor: Colors.surface,
+    padding: Spacing.base,
+  },
+  narrativeText: {
+    fontFamily: Fonts.body,
+    fontSize: FontSize.base,
+    color: Brand.primary,
+    lineHeight: 22,
+    flexShrink: 1,
+  },
+  noDataText: {
+    fontFamily: Fonts.body,
+    fontSize: FontSize.sm,
+    color: Brand.mutedTeal,
+    lineHeight: 22,
+  },
+  medDivider: {
+    height: 1,
+    backgroundColor: DIVIDER,
+    marginVertical: 0,
+  },
+  medRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  medCell: {
+    fontFamily: Fonts.body,
+    fontSize: FontSize.sm,
+    color: Brand.mutedTeal,
+    flex: 1,
+    textAlign: 'center',
+  },
+  medName: {
+    flex: 2,
+    textAlign: 'left',
+    color: Brand.primary,
+    fontFamily: Fonts.bodyMedium,
+  },
+});
+
+// ─── Screen styles ────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Brand.bgCream },
-  content: { padding: Spacing.xl, paddingBottom: Spacing['4xl'] },
-  h1: { fontFamily: Fonts.heading, fontSize: FontSize['2xl'], color: Brand.primary },
-  subtitle: { fontFamily: Fonts.body, fontSize: FontSize.base, color: Brand.bodyText, marginTop: Spacing.xs, marginBottom: Spacing.base },
 
-  segment: {
+  header: {
     flexDirection: 'row',
-    backgroundColor: Brand.bgWarmCard,
-    borderRadius: BorderRadius.full,
-    padding: 3,
-    marginBottom: Spacing.lg,
-  },
-  segmentBtn: { flex: 1, paddingVertical: Spacing.sm, borderRadius: BorderRadius.full, alignItems: 'center' },
-  segmentActive: { backgroundColor: Brand.primary },
-  segmentText: { fontFamily: Fonts.bodyMedium, fontSize: FontSize.sm, color: Brand.primaryText },
-  segmentTextActive: { color: Colors.white },
-
-  section: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Brand.borderWarm,
-    padding: Spacing.lg,
-    marginBottom: Spacing.sm,
-  },
-  sectionTitle: { fontFamily: Fonts.bodySemiBold, fontSize: FontSize.base, color: Brand.primary, marginBottom: Spacing.sm },
-  value: { fontFamily: Fonts.body, fontSize: FontSize.base, color: Brand.primaryContent, lineHeight: 22 },
-  muted: { fontFamily: Fonts.body, fontSize: FontSize.base, color: Colors.textMuted },
-  kvRow: { flexDirection: 'row', justifyContent: 'space-between', gap: Spacing.base },
-  kvKey: { fontFamily: Fonts.body, fontSize: FontSize.base, color: Brand.mutedTeal, flexShrink: 1 },
-  kvVal: { fontFamily: Fonts.bodyMedium, fontSize: FontSize.base, color: Brand.primaryContent, textAlign: 'right', flexShrink: 1 },
-
-  exportBtn: {
-    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-    minHeight: MinTapTarget.neoSenior,
-    backgroundColor: Brand.primaryForm,
-    borderRadius: BorderRadius.sm,
-    marginTop: Spacing.base,
+    paddingHorizontal: Spacing.lg,
+    height: 64,
+    backgroundColor: '#F5F1E5',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: DIVIDER,
   },
-  exportDisabled: { opacity: 0.6 },
-  exportText: { fontFamily: Fonts.bodySemiBold, fontSize: FontSize.base, color: Colors.white },
-
-  aiSection: {
-    backgroundColor: '#FDF0E1',
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: '#F5D9AC',
-    padding: Spacing.lg,
-    marginBottom: Spacing.sm,
-  },
-  aiSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    marginBottom: Spacing.sm,
-  },
-  aiSectionTitle: {
+  greeting: {
     fontFamily: Fonts.bodySemiBold,
+    fontSize: FontSize.sm,
+    color: Brand.primary,
+  },
+
+  body: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.xl,
+  },
+
+  selectorRow: {
+    marginBottom: Spacing.base,
+  },
+
+  // Filter chips
+  chipRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginBottom: Spacing.xl,
+  },
+  chip: {
+    paddingHorizontal: Spacing.base,
+    paddingVertical: Spacing.sm,
+    borderRadius: 20,
+  },
+  chipActive: {
+    backgroundColor: Brand.primary,
+  },
+  chipInactive: {
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+  },
+  chipText: {
+    fontFamily: Fonts.bodyMedium,
+    fontSize: FontSize.sm,
+  },
+  chipTextActive: { color: Colors.white },
+  chipTextInactive: { color: Brand.primary },
+
+  // Patient context block
+  patientBlock: {
+    borderWidth: 1,
+    borderColor: DASHED_BORDER,
+    borderStyle: 'dashed',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    marginBottom: Spacing.xl,
+  },
+  seniorTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: Spacing.sm,
+  },
+  seniorTagText: {
+    fontFamily: Fonts.bodyMedium,
+    fontSize: FontSize.xs,
+    color: Brand.mutedTeal,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  patientName: {
+    fontFamily: Fonts.headingBold,
+    fontSize: 16,
+    fontWeight: '700',
+    color: Brand.primary,
+    marginBottom: Spacing.base,
+  },
+  patientRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  patientLabel: {
+    fontFamily: Fonts.body,
     fontSize: FontSize.base,
-    color: '#9a5b14',
+    color: Brand.mutedTeal,
+    flexShrink: 0,
+  },
+  patientValue: {
+    fontFamily: Fonts.bodyMedium,
+    fontSize: FontSize.base,
+    fontWeight: '500',
+    color: Brand.primary,
+    flexShrink: 1,
+    textAlign: 'right',
+  },
+
+  // Generate button
+  generateBtn: {
+    height: 54,
+    backgroundColor: Brand.primary,
+    borderRadius: BorderRadius.lg,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: Spacing.xl,
+  },
+  generateBtnPressed: { opacity: 0.75 },
+  generateBtnText: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.white,
+  },
+
+  emptyBox: {
+    paddingVertical: Spacing['3xl'],
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontFamily: Fonts.body,
+    fontSize: FontSize.base,
+    color: Brand.mutedTeal,
+    textAlign: 'center',
   },
 });

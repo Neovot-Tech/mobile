@@ -1,6 +1,7 @@
 // Doctor summary / export — LIVE (FRONTEND_HANDOVER.md §9).
 // Path param is the NeoSenior **user UUID**. `days` ∈ {7,14,30} only.
-import { File, Paths } from 'expo-file-system';
+import { Platform } from 'react-native';
+import { downloadAsync, cacheDirectory } from 'expo-file-system/legacy';
 import { http } from './http';
 import { API_BASE, Endpoints } from '../constants/api';
 import { NeoSeniorUserId } from './types';
@@ -48,18 +49,43 @@ export function getSummaryPdfUrl(userId: NeoSeniorUserId, days: SummaryWindow = 
 }
 
 /**
- * Download the auth-gated PDF to the cache and return its local file URI
- * (ready to hand to the Share sheet). `idToken` is passed in so the service
- * stays decoupled from the store.
+ * Download the auth-gated PDF and make it available for sharing.
+ *
+ * Native: downloads to the app cache via expo-file-system and returns a
+ * local file:// URI the Share sheet can open.
+ *
+ * Web: fetches via axios (goes through auth interceptors), creates a Blob
+ * URL, and triggers the browser's native download — no file URI is returned.
  */
 export async function downloadSummaryPdf(
   userId: NeoSeniorUserId,
   days: SummaryWindow,
   idToken: string,
 ): Promise<string> {
-  const dest = new File(Paths.cache, `summary-${userId}-${days}d-${Date.now()}.pdf`);
-  const file = await File.downloadFileAsync(getSummaryPdfUrl(userId, days), dest, {
+  const url = getSummaryPdfUrl(userId, days);
+
+  if (Platform.OS === 'web') {
+    const { data } = await http.get<ArrayBuffer>(url, { responseType: 'arraybuffer' });
+    const blob = new Blob([data], { type: 'application/pdf' });
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = `neovot-summary-${userId}-${days}d.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(objectUrl);
+    return objectUrl;
+  }
+
+  const fileUri = `${cacheDirectory}summary-${userId}-${days}d-${Date.now()}.pdf`;
+  const result = await downloadAsync(url, fileUri, {
     headers: { Authorization: `Bearer ${idToken}` },
   });
-  return file.uri;
+
+  if (result.status !== 200) {
+    throw new Error(`PDF generation failed (HTTP ${result.status})`);
+  }
+
+  return result.uri;
 }

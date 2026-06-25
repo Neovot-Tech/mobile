@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, Pressable, Alert, Share, ActivityIndicator } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, Pressable, Share, ActivityIndicator } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,6 +8,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Clipboard from 'expo-clipboard';
 
 import Screen from '../../components/Screen';
+import BrandAlert from '../../components/BrandAlert';
 import { inviteNeoCare } from '../../services/onboarding.service';
 import { getMyData, deleteMyAccount } from '../../services/users.service';
 import { logout as logoutApi } from '../../services/auth.service';
@@ -20,6 +21,8 @@ export default function NeoSeniorSettingsScreen() {
   const { t, i18n } = useTranslation();
   const { user, setUser, logout } = useAuthStore();
   const navigation = useNavigation<NativeStackNavigationProp<NeoSeniorAppStackParamList>>();
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   const inviteQ = useQuery({
     queryKey: ['inviteNeoCare'],
@@ -38,29 +41,19 @@ export default function NeoSeniorSettingsScreen() {
       const data = await getMyData();
       await Share.share({ message: JSON.stringify(data, null, 2) });
     } catch {
-      Alert.alert(t('common.error'));
+      setExportError(t('common.error'));
     }
   };
 
-  const handleDelete = () => {
-    Alert.alert(
-      t('neoSeniorSettings.deleteConfirmTitle'),
-      t('neoSeniorSettings.deleteConfirmBody'),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('neoSeniorSettings.deleteConfirmCta'),
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteMyAccount();
-            } finally {
-              logout();
-            }
-          },
-        },
-      ],
-    );
+  const handleDelete = () => setDeleteConfirm(true);
+
+  const confirmDelete = async () => {
+    setDeleteConfirm(false);
+    try {
+      await deleteMyAccount();
+    } finally {
+      logout();
+    }
   };
 
   const handleLogout = async () => {
@@ -72,6 +65,22 @@ export default function NeoSeniorSettingsScreen() {
 
   return (
     <Screen contentContainerStyle={styles.content}>
+      <BrandAlert
+        visible={!!exportError}
+        title={t('common.error')}
+        message={exportError ?? ''}
+        onDismiss={() => setExportError(null)}
+      />
+      <BrandAlert
+        visible={deleteConfirm}
+        title={t('neoSeniorSettings.deleteConfirmTitle')}
+        message={t('neoSeniorSettings.deleteConfirmBody')}
+        onDismiss={() => setDeleteConfirm(false)}
+        buttons={[
+          { label: t('common.cancel'), variant: 'ghost', onPress: () => setDeleteConfirm(false) },
+          { label: t('neoSeniorSettings.deleteConfirmCta'), variant: 'filled', destructive: true, onPress: confirmDelete },
+        ]}
+      />
       <Text style={styles.h1}>{t('neoSeniorSettings.title')}</Text>
 
       {/* Profile */}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useMutation } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,6 +8,7 @@ import { createLink } from '../services/onboarding.service';
 import { getApiErrorMessage } from '../services/http';
 import { useCreatedSeniors } from '../store/createdSeniors.store';
 import { Colors, Brand, Fonts, FontSize, Spacing, BorderRadius, MinTapTarget } from '../theme';
+import BrandAlert from './BrandAlert';
 
 /** Normalise free input into the NSR-XXXXX shape. */
 function normaliseId(raw: string): string {
@@ -31,16 +32,14 @@ interface LinkOrCreateChoiceProps {
 export default function LinkOrCreateChoice({ onLinked, onCreateNew }: LinkOrCreateChoiceProps) {
   const { t } = useTranslation();
   const [code, setCode] = useState('');
+  const [successVisible, setSuccessVisible] = useState(false);
   const addLinkRequest = useCreatedSeniors((s) => s.addLinkRequest);
 
   const linkMut = useMutation({
     mutationFn: (id: string) => createLink(id),
     onSuccess: (_res, id) => {
-      // Remember the outgoing request locally — the backend doesn't list a
-      // NeoCare's pending links, so the dashboard shows it from here.
       addLinkRequest(id);
-      Alert.alert(t('neoCareLink.linkCta'), t('neoCareLink.linkPending'));
-      onLinked();
+      setSuccessVisible(true);
     },
   });
 
@@ -102,6 +101,13 @@ export default function LinkOrCreateChoice({ onLinked, onCreateNew }: LinkOrCrea
         </View>
         <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
       </Pressable>
+
+      <BrandAlert
+        visible={successVisible}
+        title={t('neoCareLink.linkCta')}
+        message={t('neoCareLink.linkPending')}
+        onDismiss={() => { setSuccessVisible(false); onLinked(); }}
+      />
     </View>
   );
 }

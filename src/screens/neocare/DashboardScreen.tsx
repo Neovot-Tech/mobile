@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,9 @@ import {
   Pressable,
   ActivityIndicator,
   RefreshControl,
+  StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,17 +22,17 @@ import {
   LinkedProfile,
 } from '../../services/dashboard.service';
 import { getApiErrorMessage } from '../../services/http';
+import { getMyProfile } from '../../services/users.service';
 import * as Clipboard from 'expo-clipboard';
 import { useAuthStore } from '../../store/auth.store';
 import { useSelectedSenior } from '../../store/selectedSenior.store';
 import { useCreatedSeniors, CreatedSenior } from '../../store/createdSeniors.store';
-import Screen from '../../components/Screen';
-import ProfileNudgeBanner from '../../components/ProfileNudgeBanner';
-import { useProfileNudge } from '../../hooks/useProfileNudge';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { NeoCareAppStackParamList } from '../../navigation/types';
 import { Colors, Brand, Spacing, FontSize, Fonts, BorderRadius, MinTapTarget } from '../../theme';
+import Logo from '../../components/Logo';
+import BrandAlert from '../../components/BrandAlert';
 
 const AVATAR_COLORS = ['#FFD1BB', '#C7E4EC', '#D6E8D1', '#E8D6F0', '#F0E4C0'];
 
@@ -49,10 +51,22 @@ function getAvatarColor(index: number): string {
 
 export default function NeoCaresDashboardScreen() {
   const { t } = useTranslation();
-  const qc = useQueryClient();
-  const firstName = useAuthStore((s) => (s.user?.displayName ?? '').split(' ')[0]);
+  const insets = useSafeAreaInsets();
+  const user = useAuthStore((s) => s.user);
+  const patchDisplayName = useAuthStore((s) => s.patchDisplayName);
+  const firstName = (user?.displayName ?? '').split(' ')[0];
 
-  const nudge = useProfileNudge();
+  // Silently sync the real name from the backend on first mount.
+  // Fixes existing sessions where displayName was set to the phone number
+  // at sign-up time and never updated in AsyncStorage after onboarding.
+  useEffect(() => {
+    getMyProfile()
+      .then(({ fullName }) => {
+        if (fullName) patchDisplayName(fullName);
+      })
+      .catch(() => {});
+  }, []);
+
   const navigation = useNavigation<NativeStackNavigationProp<NeoCareAppStackParamList>>();
 
   const profilesQ = useQuery({ queryKey: ['linkedProfiles'], queryFn: getLinkedProfiles });
@@ -64,14 +78,12 @@ export default function NeoCaresDashboardScreen() {
     return profiles.find((p) => p.userId === senior?.userId) ?? profiles[0];
   }, [profiles, senior]);
 
-  // Keep the shared selection valid as profiles load/change.
   useEffect(() => {
     if (profiles.length && !profiles.find((p) => p.userId === senior?.userId)) {
       setSenior(profiles[0]);
     }
   }, [profiles, senior, setSenior]);
 
-  // Seniors this NeoCare created who haven't activated yet (show "share code").
   const created = useCreatedSeniors((s) => s.created);
   const linkRequests = useCreatedSeniors((s) => s.linkRequests);
   const reconcile = useCreatedSeniors((s) => s.reconcile);
@@ -81,94 +93,187 @@ export default function NeoCaresDashboardScreen() {
 
   const goAdd = () => navigation.navigate('AddSenior');
 
+  const isEmptyState =
+    !profilesQ.isLoading &&
+    !profilesQ.isError &&
+    profiles.length === 0 &&
+    created.length === 0 &&
+    linkRequests.length === 0;
+
+  // No confirmed profiles yet, but a link request is pending — show awaiting state.
+  const isPendingOnly =
+    !profilesQ.isLoading &&
+    !profilesQ.isError &&
+    profiles.length === 0 &&
+    created.length === 0 &&
+    linkRequests.length > 0;
+
   return (
-    <Screen
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl
-          refreshing={profilesQ.isRefetching}
-          onRefresh={() => profilesQ.refetch()}
-          tintColor={Brand.primary}
-        />
-      }
-    >
-        <Text style={styles.greeting}>
-          {firstName ? t('neoCare.greeting', { name: firstName }) : t('neoCare.dashboard')}
-        </Text>
-        <Text style={styles.h1}>{t('neoCare.dashboard')}</Text>
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
 
+      <View style={styles.header}>
+        <Logo />
+        {firstName ? (
+          <Text style={styles.greeting}>Hello, {firstName}</Text>
+        ) : null}
+      </View>
 
-        <ProfileNudgeBanner
-          visible={nudge.visible}
-          onDismiss={nudge.dismiss}
-          onComplete={() => selected?.neoSeniorId && navigation.navigate('EditProfile', { nsrId: selected.neoSeniorId })}
-          seniorName={selected?.fullName}
-        />
+      {profilesQ.isLoading ? (
+        <View style={styles.centered}>
+          <ActivityIndicator color={Brand.primary} />
+        </View>
+      ) : profilesQ.isError ? (
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <ErrorRow
+            message={getApiErrorMessage(profilesQ.error)}
+            onRetry={() => profilesQ.refetch()}
+          />
+        </ScrollView>
+      ) : isEmptyState ? (
+        <View style={styles.emptyContainer}>
+          <EmptyStateCentered onAdd={goAdd} />
+        </View>
+      ) : isPendingOnly ? (
+        <View style={styles.emptyContainer}>
+          <AwaitingState nsr={linkRequests[0].nsr} />
+        </View>
+      ) : (
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: insets.bottom + Spacing['3xl'] },
+          ]}
+          refreshControl={
+            <RefreshControl
+              refreshing={profilesQ.isRefetching}
+              onRefresh={() => profilesQ.refetch()}
+              tintColor={Brand.primary}
+            />
+          }
+        >
+          {created.length > 0 && (
+            <>
+              <Text style={styles.sectionLabel}>{t('neoCare.pendingTitle')}</Text>
+              {created.map((c) => (
+                <PendingCreatedCard key={c.nsr} item={c} />
+              ))}
+            </>
+          )}
 
-        {profilesQ.isLoading ? (
-          <ActivityIndicator color={Brand.primary} style={{ marginTop: Spacing['3xl'] }} />
-        ) : profilesQ.isError ? (
-          <ErrorRow message={getApiErrorMessage(profilesQ.error)} onRetry={() => profilesQ.refetch()} />
-        ) : (
-          <>
-            {/* Created-but-not-yet-activated seniors — share the code with them */}
-            {created.length > 0 && (
-              <>
-                <Text style={styles.sectionLabel}>{t('neoCare.pendingTitle')}</Text>
-                {created.map((c) => (
-                  <PendingCreatedCard key={c.nsr} item={c} />
-                ))}
-              </>
-            )}
+          {profiles.length > 0 && (
+            <>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.chips}
+              >
+                {profiles.map((p, idx) => {
+                  const active = p.userId === selected?.userId;
+                  return (
+                    <Pressable
+                      key={p.userId}
+                      onPress={() => setSenior(p)}
+                      accessibilityRole="button"
+                      style={[styles.chip, active && styles.chipActive]}
+                    >
+                      {active && (
+                        <View
+                          style={[styles.chipAvatar, { backgroundColor: getAvatarColor(idx) }]}
+                        >
+                          <Text style={styles.chipAvatarText}>{getInitials(p.fullName)}</Text>
+                        </View>
+                      )}
+                      <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                        {p.fullName}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
 
-            {/* Link requests sent to existing seniors — awaiting their consent */}
-            {linkRequests.length > 0 && (
-              <>
-                <Text style={styles.sectionLabel}>{t('neoCare.linkPendingTitle')}</Text>
-                {linkRequests.map((l) => (
-                  <LinkRequestCard key={l.nsr} code={l.nsr} />
-                ))}
-              </>
-            )}
+              {selected && <SeniorPanel key={selected.userId} profile={selected} />}
+            </>
+          )}
 
-            {profiles.length > 0 ? (
-              <>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips}>
-                  {profiles.map((p, idx) => {
-                    const active = p.userId === selected?.userId;
-                    return (
-                      <Pressable
-                        key={p.userId}
-                        onPress={() => setSenior(p)}
-                        accessibilityRole="button"
-                        style={[styles.chip, active && styles.chipActive]}
-                      >
-                        {active && (
-                          <View style={[styles.chipAvatar, { backgroundColor: getAvatarColor(idx) }]}>
-                            <Text style={styles.chipAvatarText}>{getInitials(p.fullName)}</Text>
-                          </View>
-                        )}
-                        <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                          {p.fullName}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
+          <Pressable style={styles.addBtn} onPress={goAdd} accessibilityRole="button">
+            <Ionicons name="add-circle-outline" size={20} color={Brand.primary} />
+            <Text style={styles.addBtnText}>{t('neoCare.addSenior')}</Text>
+          </Pressable>
+        </ScrollView>
+      )}
+    </View>
+  );
+}
 
-                {selected && <SeniorPanel key={selected.userId} profile={selected} />}
-              </>
-            ) : created.length === 0 && linkRequests.length === 0 ? (
-              <EmptyState onAdd={goAdd} />
-            ) : null}
+function EmptyStateCentered({ onAdd }: { onAdd: () => void }) {
+  return (
+    <View style={styles.emptyInner}>
+      <View style={styles.emptyOuterCircle}>
+        <View style={styles.emptyInnerCircle}>
+          <Ionicons name="document-text-outline" size={32} color={Colors.white} />
+        </View>
+      </View>
 
-            <Pressable style={styles.addBtn} onPress={goAdd} accessibilityRole="button">
-              <Ionicons name="add-circle-outline" size={20} color={Brand.primary} />
-              <Text style={styles.addBtnText}>{t('neoCare.addSenior')}</Text>
-            </Pressable>
-          </>
-        )}
-    </Screen>
+      <Text style={styles.emptyTitle}>no records found</Text>
+
+      <View style={styles.dashedDivider} />
+
+      <Text style={styles.emptyBody}>
+        Add your elderly loved one's account to start monitoring
+      </Text>
+
+      <Pressable
+        style={({ pressed }) => [styles.emptyAddBtn, pressed && { opacity: 0.8 }]}
+        onPress={onAdd}
+        accessibilityRole="button"
+      >
+        <Text style={styles.emptyAddText}>Add account</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function AwaitingState({ nsr }: { nsr: string }) {
+  const suffix = nsr.startsWith('NSR-') ? nsr.slice(4) : nsr;
+  const [reminderVisible, setReminderVisible] = useState(false);
+
+  return (
+    <View style={styles.emptyInner}>
+      <View style={styles.emptyOuterCircle}>
+        <View style={styles.emptyInnerCircle}>
+          <View style={styles.awaitingGlyph}>
+            <Text style={styles.awaitingGlyphText}>?</Text>
+          </View>
+        </View>
+      </View>
+
+      <Text style={styles.emptyTitle}>Awaiting Confirmation</Text>
+
+      <View style={styles.dashedDivider} />
+
+      <Text style={styles.emptyBody}>
+        The NeoSenior with code{' '}
+        <Text style={{ fontFamily: Fonts.bodySemiBold, color: Brand.primary }}>{suffix}</Text>
+        {' '}has to approve your request
+      </Text>
+
+      <Pressable
+        style={({ pressed }) => [styles.emptyAddBtn, pressed && { opacity: 0.8 }]}
+        onPress={() => setReminderVisible(true)}
+        accessibilityRole="button"
+      >
+        <Text style={styles.emptyAddText}>Send a Reminder</Text>
+      </Pressable>
+
+      <BrandAlert
+        visible={reminderVisible}
+        title="Send a Reminder"
+        message="Nudge the NeoSenior and tell them to accept your request on their dashboard."
+        onDismiss={() => setReminderVisible(false)}
+      />
+    </View>
   );
 }
 
@@ -199,15 +304,30 @@ function SeniorPanel({ profile }: { profile: LinkedProfile }) {
       {summaryQ.isLoading ? (
         <ActivityIndicator color={Brand.primary} style={{ marginVertical: Spacing.lg }} />
       ) : summaryQ.isError ? (
-        <ErrorRow message={getApiErrorMessage(summaryQ.error)} onRetry={() => summaryQ.refetch()} />
+        <ErrorRow
+          message={getApiErrorMessage(summaryQ.error)}
+          onRetry={() => summaryQ.refetch()}
+        />
       ) : s ? (
         <View style={styles.statGrid}>
           <Stat label={t('neoCare.statDaysLogged')} value={s.daysLogged} />
           <Stat label={t('neoCare.statLastLog')} value={lastLog} />
           <Stat label={t('neoCare.statHighBp')} value={s.highBpDays} warn={s.highBpDays > 0} />
-          <Stat label={t('neoCare.statHighSugar')} value={s.highSugarDays} warn={s.highSugarDays > 0} />
-          <Stat label={t('neoCare.statSpo2Low')} value={s.spo2LowDays} warn={s.spo2LowDays > 0} />
-          <Stat label={t('neoCare.statMedsMissed')} value={s.medsMissed} warn={s.medsMissed > 0} />
+          <Stat
+            label={t('neoCare.statHighSugar')}
+            value={s.highSugarDays}
+            warn={s.highSugarDays > 0}
+          />
+          <Stat
+            label={t('neoCare.statSpo2Low')}
+            value={s.spo2LowDays}
+            warn={s.spo2LowDays > 0}
+          />
+          <Stat
+            label={t('neoCare.statMedsMissed')}
+            value={s.medsMissed}
+            warn={s.medsMissed > 0}
+          />
         </View>
       ) : null}
 
@@ -286,23 +406,6 @@ function LinkRequestCard({ code }: { code: string }) {
   );
 }
 
-function EmptyState({ onAdd }: { onAdd: () => void }) {
-  const { t } = useTranslation();
-  return (
-    <View style={styles.emptyCard}>
-      <View style={styles.emptyIconWrap}>
-        <Ionicons name="people-outline" size={34} color={Brand.primary} />
-      </View>
-      <Text style={styles.emptyTitle}>{t('neoCare.noLinkedTitle')}</Text>
-      <Text style={styles.emptyBody}>{t('neoCare.noLinkedBody')}</Text>
-      <Pressable style={styles.emptyAddBtn} onPress={onAdd} accessibilityRole="button">
-        <Ionicons name="add" size={20} color={Colors.white} />
-        <Text style={styles.emptyAddText}>{t('neoCare.addSenior')}</Text>
-      </Pressable>
-    </View>
-  );
-}
-
 function Stat({ label, value, warn }: { label: string; value: string | number; warn?: boolean }) {
   return (
     <View style={[styles.stat, warn && styles.statWarn]}>
@@ -327,13 +430,6 @@ function ErrorRow({ message, onRetry }: { message: string; onRetry: () => void }
   );
 }
 
-function tierStyle(tier: string) {
-  const t = tier.toLowerCase();
-  if (t === 'urgent') return { backgroundColor: Colors.error };
-  if (t === 'warning') return { backgroundColor: Colors.warning };
-  return { backgroundColor: Colors.textMuted };
-}
-
 function alertStripeStyle(tier: string) {
   const t = tier.toLowerCase();
   if (t === 'urgent') return { backgroundColor: Colors.error };
@@ -343,16 +439,103 @@ function alertStripeStyle(tier: string) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Brand.bgCream },
-  content: { padding: Spacing.xl, paddingBottom: Spacing['4xl'] },
 
-  greeting: { fontFamily: Fonts.body, fontSize: FontSize.base, color: Brand.mutedTeal },
-  h1: {
-    fontFamily: Fonts.heading,
-    fontSize: FontSize['3xl'],
-    color: Brand.primary,
-    marginTop: Spacing.xs,
-    marginBottom: Spacing.lg,
+  // ─── Header ───────────────────────────────────────────────────────────────
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
+    height: 64,
+    backgroundColor: '#F5F1E5',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#EFEBE4',
   },
+  greeting: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: FontSize.sm,
+    color: Brand.primary,
+  },
+
+  // ─── Loading ──────────────────────────────────────────────────────────────
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+
+  // ─── Empty state ──────────────────────────────────────────────────────────
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: Spacing['2xl'],
+  },
+  emptyInner: { alignItems: 'center' },
+  emptyOuterCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: '#F7EFE2',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyInnerCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: Brand.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyTitle: {
+    marginTop: Spacing['2xl'],
+    fontFamily: Fonts.heading,
+    fontSize: FontSize.xl,
+    color: Brand.primary,
+    textAlign: 'center',
+  },
+  dashedDivider: {
+    marginVertical: Spacing.base,
+    width: 140,
+    height: 0,
+    borderTopWidth: 1,
+    borderTopColor: Brand.mutedTeal,
+    borderStyle: 'dashed',
+  },
+  emptyBody: {
+    fontFamily: Fonts.body,
+    fontSize: 15,
+    color: Brand.mutedTeal,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: Spacing.xl,
+  },
+  emptyAddBtn: {
+    backgroundColor: Brand.primary,
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    borderRadius: BorderRadius.sm,
+  },
+  emptyAddText: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: FontSize.sm,
+    color: Colors.white,
+  },
+  awaitingGlyph: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#F7EFE2',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  awaitingGlyphText: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 13,
+    color: '#00333A',
+    lineHeight: 16,
+    textAlign: 'center',
+  },
+
+  // ─── Scrollable content (non-empty state) ─────────────────────────────────
+  scrollContent: { padding: Spacing.xl },
 
   sectionLabel: {
     fontFamily: Fonts.bodySemiBold,
@@ -383,11 +566,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  chipAvatarText: {
-    fontFamily: Fonts.heading,
-    fontSize: 11,
-    color: Brand.primary,
-  },
+  chipAvatarText: { fontFamily: Fonts.heading, fontSize: 11, color: Brand.primary },
   chipText: { fontFamily: Fonts.bodyMedium, fontSize: FontSize.sm, color: Brand.primaryText },
   chipTextActive: { color: Colors.white },
 
@@ -405,20 +584,13 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 1,
   },
-  statWarn: {
-    borderColor: 'rgba(232,68,46,0.25)',
-  },
+  statWarn: { borderColor: 'rgba(232,68,46,0.25)' },
   statTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  statValue: {
-    fontFamily: Fonts.heading,
-    fontSize: 32,
-    color: Brand.primary,
-    lineHeight: 36,
-  },
+  statValue: { fontFamily: Fonts.heading, fontSize: 32, color: Brand.primary, lineHeight: 36 },
   statValueWarn: { color: Colors.error },
   statLabel: {
     fontFamily: Fonts.body,
@@ -447,18 +619,19 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: BorderRadius.md,
     borderBottomLeftRadius: BorderRadius.md,
   },
-  alertBody: {
-    flex: 1,
-    padding: Spacing.base,
-    gap: 4,
-  },
+  alertBody: { flex: 1, padding: Spacing.base, gap: 4 },
   alertMeta: {
     fontFamily: Fonts.bodyMedium,
     fontSize: 12,
     letterSpacing: 0.5,
     color: Brand.mutedTeal,
   },
-  alertReason: { fontFamily: Fonts.body, fontSize: FontSize.base, color: Brand.primaryContent, lineHeight: 22 },
+  alertReason: {
+    fontFamily: Fonts.body,
+    fontSize: FontSize.base,
+    color: Brand.primaryContent,
+    lineHeight: 22,
+  },
   ackBtn: {
     minHeight: MinTapTarget.neoCare,
     minWidth: 100,
@@ -471,93 +644,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.sm,
   },
   ackText: { fontFamily: Fonts.bodySemiBold, fontSize: FontSize.sm, color: Brand.primary },
-
-  noAlertsBox: {
-    paddingVertical: Spacing.base,
-  },
-
-  emptyCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: Brand.borderWarm,
-    padding: Spacing.xl,
-    marginTop: Spacing.lg,
-    alignItems: 'center',
-  },
-  emptyIconWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: Brand.accentPeach,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.base,
-  },
-  emptyTitle: {
-    fontFamily: Fonts.heading,
-    fontSize: FontSize.lg,
-    color: Brand.primary,
-    textAlign: 'center',
-  },
-  emptyBody: {
-    fontFamily: Fonts.body,
-    fontSize: FontSize.base,
-    lineHeight: 22,
-    color: Brand.bodyText,
-    marginTop: Spacing.sm,
-    marginBottom: Spacing.lg,
-    textAlign: 'center',
-  },
-  inputLabel: {
-    fontFamily: Fonts.bodyBold,
-    fontSize: FontSize.sm,
-    color: Brand.primaryText,
-    marginBottom: Spacing.sm,
-    alignSelf: 'flex-start',
-    width: '100%',
-  },
-  input: {
-    minHeight: MinTapTarget.neoCare,
-    borderWidth: 1,
-    borderColor: Brand.borderForm,
-    borderRadius: BorderRadius.sm,
-    paddingHorizontal: Spacing.base,
-    fontSize: FontSize.base,
-    fontFamily: 'monospace',
-    color: Brand.inputText,
-    backgroundColor: Colors.surface,
-    width: '100%',
-  },
-  pendingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#eef5f6',
-    borderRadius: BorderRadius.sm,
-    padding: Spacing.md,
-    marginTop: Spacing.sm,
-    width: '100%',
-  },
-  linkBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    minHeight: MinTapTarget.neoSenior,
-    backgroundColor: Brand.primaryForm,
-    borderRadius: BorderRadius.sm,
-    alignSelf: 'stretch',
-    marginTop: Spacing.lg,
-  },
-  linkBtnDisabled: { opacity: 0.5 },
-  linkBtnText: { fontFamily: Fonts.bodySemiBold, fontSize: FontSize.base, color: Colors.white },
-
-  muted: { fontFamily: Fonts.body, fontSize: FontSize.base, color: Colors.textMuted },
-  errorRow: { marginTop: Spacing.lg, gap: Spacing.sm },
-  error: { fontFamily: Fonts.body, fontSize: FontSize.sm, color: Colors.error, marginTop: Spacing.sm },
-  success: { fontFamily: Fonts.body, fontSize: FontSize.sm, color: Colors.success },
-  retry: { fontFamily: Fonts.bodySemiBold, fontSize: FontSize.base, color: Brand.primary },
+  noAlertsBox: { paddingVertical: Spacing.base },
 
   pendingCard: {
     backgroundColor: Colors.surface,
@@ -567,9 +654,19 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     marginBottom: Spacing.sm,
   },
-  pendingHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.xs },
+  pendingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.xs,
+  },
   pendingName: { fontFamily: Fonts.heading, fontSize: FontSize.lg, color: Brand.primary },
-  pendingInstruction: { fontFamily: Fonts.body, fontSize: FontSize.base, lineHeight: 22, color: Brand.bodyText },
+  pendingInstruction: {
+    fontFamily: Fonts.body,
+    fontSize: FontSize.base,
+    lineHeight: 22,
+    color: Brand.bodyText,
+  },
   codeBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -583,8 +680,18 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     marginTop: Spacing.md,
   },
-  codeText: { fontFamily: Fonts.heading, fontSize: FontSize.xl, letterSpacing: 2, color: Brand.primary },
-  pendingHint: { fontFamily: Fonts.body, fontSize: FontSize.sm, color: Brand.mutedTeal, marginTop: Spacing.sm },
+  codeText: {
+    fontFamily: Fonts.heading,
+    fontSize: FontSize.xl,
+    letterSpacing: 2,
+    color: Brand.primary,
+  },
+  pendingHint: {
+    fontFamily: Fonts.body,
+    fontSize: FontSize.sm,
+    color: Brand.mutedTeal,
+    marginTop: Spacing.sm,
+  },
 
   addBtn: {
     flexDirection: 'row',
@@ -600,16 +707,8 @@ const styles = StyleSheet.create({
   },
   addBtnText: { fontFamily: Fonts.bodySemiBold, fontSize: FontSize.base, color: Brand.primary },
 
-  emptyAddBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-    minHeight: MinTapTarget.neoSenior,
-    alignSelf: 'stretch',
-    backgroundColor: Brand.primary,
-    borderRadius: BorderRadius.sm,
-    marginTop: Spacing.sm,
-  },
-  emptyAddText: { fontFamily: Fonts.bodySemiBold, fontSize: FontSize.base, color: Colors.white },
+  muted: { fontFamily: Fonts.body, fontSize: FontSize.base, color: Colors.textMuted },
+  errorRow: { marginTop: Spacing.lg, gap: Spacing.sm },
+  error: { fontFamily: Fonts.body, fontSize: FontSize.sm, color: Colors.error, marginTop: Spacing.sm },
+  retry: { fontFamily: Fonts.bodySemiBold, fontSize: FontSize.base, color: Brand.primary },
 });

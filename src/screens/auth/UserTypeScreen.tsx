@@ -30,9 +30,11 @@ function AvatarCluster() {
   );
 }
 
-export default function UserTypeScreen({ navigation }: Props) {
+export default function UserTypeScreen({ navigation, route }: Props) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const mode = route.params?.mode ?? 'signup';
+  const isSignIn = mode === 'signin';
 
   return (
     <View style={styles.root}>
@@ -75,7 +77,7 @@ export default function UserTypeScreen({ navigation }: Props) {
         {/* NeoCare — dark teal card */}
         <Pressable
           style={styles.cardDark}
-          onPress={() => navigation.navigate('SignUp', { role: 'neo_care' })}
+          onPress={() => navigation.navigate(isSignIn ? 'SignIn' : 'SignUp', { role: 'neo_care' })}
           accessibilityRole="button"
           accessibilityLabel={t('userType.neoCare')}
         >
@@ -90,7 +92,7 @@ export default function UserTypeScreen({ navigation }: Props) {
         {/* NeoSenior — white card */}
         <Pressable
           style={styles.cardLight}
-          onPress={() => navigation.navigate('SignUp', { role: 'neo_senior' })}
+          onPress={() => navigation.navigate(isSignIn ? 'SignIn' : 'SignUp', { role: 'neo_senior' })}
           accessibilityRole="button"
           accessibilityLabel={t('userType.neoSenior')}
         >

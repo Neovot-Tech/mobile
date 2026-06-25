@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, Text, StyleSheet, ActivityIndicator } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { Colors, FontSize, MinTapTarget, Spacing } from '../theme';
+import GoogleGIcon from './GoogleGIcon';
 
 interface GoogleButtonProps {
   label: string;
@@ -21,7 +21,7 @@ export default function GoogleButton({ label, loading = false, onPress }: Google
       {loading ? (
         <ActivityIndicator size="small" color={Colors.primary} />
       ) : (
-        <Ionicons name="logo-google" size={18} color="#4285F4" />
+        <GoogleGIcon size={20} />
       )}
       <Text style={styles.label}>{label}</Text>
     </Pressable>

@@ -7,7 +7,6 @@ import {
   Animated,
   Easing,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +21,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useQuery } from '@tanstack/react-query';
 
 import Screen from '../../components/Screen';
+import BrandAlert from '../../components/BrandAlert';
 import ClassificationSheet from '../../components/ClassificationSheet';
 import ProfileNudgeBanner from '../../components/ProfileNudgeBanner';
 import { useLogPipeline } from '../../hooks/useLogPipeline';
@@ -68,6 +68,8 @@ export default function NeoSeniorHomeScreen() {
 
   const nudge = useProfileNudge();
   const navigation = useNavigation<NativeStackNavigationProp<NeoSeniorAppStackParamList>>();
+  const [cameraDeniedVisible, setCameraDeniedVisible] = useState(false);
+  const [uploadPickerVisible, setUploadPickerVisible] = useState(false);
 
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder);
@@ -189,7 +191,7 @@ export default function NeoSeniorHomeScreen() {
     if (busy || recording) return;
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert(t('neoSeniorHome.cameraDenied'));
+      setCameraDeniedVisible(true);
       return;
     }
     const res = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.7 });
@@ -204,11 +206,7 @@ export default function NeoSeniorHomeScreen() {
 
   const uploadFallback = () => {
     if (busy || recording) return;
-    Alert.alert(t('neoSeniorHome.chooseUploadTitle'), undefined, [
-      { text: t('neoSeniorHome.logPhoto'), onPress: () => uploadImage('photo_auto') },
-      { text: t('neoSeniorHome.scanPrescription'), onPress: () => uploadImage('prescription_scan') },
-      { text: t('common.cancel'), style: 'cancel' },
-    ]);
+    setUploadPickerVisible(true);
   };
 
   const latest = latestQ.data?.[0];
@@ -374,6 +372,33 @@ export default function NeoSeniorHomeScreen() {
         )}
       </View>
 
+      <BrandAlert
+        visible={cameraDeniedVisible}
+        title={t('neoSeniorHome.cameraDenied')}
+        onDismiss={() => setCameraDeniedVisible(false)}
+      />
+      <BrandAlert
+        visible={uploadPickerVisible}
+        title={t('neoSeniorHome.chooseUploadTitle')}
+        onDismiss={() => setUploadPickerVisible(false)}
+        buttons={[
+          {
+            label: t('neoSeniorHome.logPhoto'),
+            variant: 'ghost',
+            onPress: () => { setUploadPickerVisible(false); uploadImage('photo_auto'); },
+          },
+          {
+            label: t('neoSeniorHome.scanPrescription'),
+            variant: 'ghost',
+            onPress: () => { setUploadPickerVisible(false); uploadImage('prescription_scan'); },
+          },
+          {
+            label: t('common.cancel'),
+            variant: 'ghost',
+            onPress: () => setUploadPickerVisible(false),
+          },
+        ]}
+      />
       <ClassificationSheet
         visible={pipeline.status === 'needs_classification'}
         onSelect={(c) => pipeline.classify(c)}
