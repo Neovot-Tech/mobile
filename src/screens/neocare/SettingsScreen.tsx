@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
+  ScrollView,
   StyleSheet,
   Pressable,
   ActivityIndicator,
@@ -198,7 +199,7 @@ export default function NeoCareSettingsScreen() {
         ) : null}
       </View>
 
-      <View style={[styles.scrollContent, { paddingBottom: insets.bottom + Spacing.xl }]}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}>
         {/* B. Profile hero card */}
         <View style={styles.heroCard}>
           <View style={styles.heroAvatar}>
@@ -270,7 +271,7 @@ export default function NeoCareSettingsScreen() {
           />
           <SignOutRow onPress={handleSignOut} />
         </View>
-      </View>
+      </ScrollView>
 
       {/* Language picker */}
       <BrandAlert
@@ -358,7 +359,6 @@ const styles = StyleSheet.create({
   },
 
   scrollContent: {
-    flex: 1,
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.xl,
   },
