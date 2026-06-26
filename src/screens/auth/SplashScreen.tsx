@@ -49,7 +49,7 @@ export default function SplashScreen({ navigation }: Props) {
             toValue: max,
             duration: 150,
             useNativeDriver: true,
-          }).start(() => navigation.navigate('UserType'));
+          }).start(() => navigation.navigate('UserType', {}));
         } else {
           Animated.spring(slideX, {
             toValue: 0,

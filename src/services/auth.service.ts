@@ -115,6 +115,8 @@ interface VerifyOtpResponse {
   refresh_token: string;
   user_id: string;
   created: boolean;
+  /** Stored role returned by the backend — always the account's persisted role. */
+  role: UserRole;
 }
 
 export async function verifyOtp(params: VerifyOtpParams): Promise<OtpAuthResult> {

@@ -20,7 +20,6 @@ import SeniorSelector from '../../components/SeniorSelector';
 import { useSelectedSenior } from '../../store/selectedSenior.store';
 import { useAuthStore } from '../../store/auth.store';
 import { getDoctorSummary, downloadSummaryPdf, SummaryWindow } from '../../services/summary.service';
-import { getMedications, getAdherence } from '../../services/medications.service';
 import { getApiErrorMessage } from '../../services/http';
 import { Colors, Brand, Fonts, FontSize, Spacing, BorderRadius } from '../../theme';
 
@@ -40,6 +39,17 @@ const CHIPS: { label: string; days: SummaryWindow }[] = [
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+function calcAge(dob?: string): string | null {
+  if (!dob) return null;
+  const birth = new Date(dob);
+  if (isNaN(birth.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return `${age} yrs`;
+}
+
 function buildDateRange(days: number): string {
   const end = new Date();
   const start = new Date();
@@ -47,24 +57,6 @@ function buildDateRange(days: number): string {
   const fmt = (d: Date) =>
     d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   return `${fmt(start)} – ${fmt(end)}`;
-}
-
-function extractNarrative(value: unknown): string | null {
-  if (!value) return null;
-  if (typeof value === 'string' && value.trim()) return value.trim();
-  if (typeof value === 'object') {
-    const v = value as Record<string, unknown>;
-    for (const key of ['summary', 'narrative', 'text', 'description', 'overview', 'content']) {
-      if (typeof v[key] === 'string' && (v[key] as string).trim()) {
-        return (v[key] as string).trim();
-      }
-    }
-    const parts = Object.values(v).filter(
-      (x): x is string => typeof x === 'string' && !!x.trim(),
-    );
-    if (parts.length) return parts.join('. ');
-  }
-  return null;
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -139,32 +131,17 @@ export default function NeoCareSummaryScreen() {
     enabled: !!userId,
   });
 
-  const medsQ = useQuery({
-    queryKey: ['nc-meds-summary', userId],
-    queryFn: () => getMedications(userId),
-    enabled: !!userId,
-  });
-
-  const adherenceQ = useQuery({
-    queryKey: ['nc-adherence-summary', userId, summaryDays],
-    queryFn: () => getAdherence(userId, summaryDays),
-    enabled: !!userId,
-  });
-
-  const activeMeds = useMemo(() => (medsQ.data ?? []).filter((m) => m.active), [medsQ.data]);
+  const medRows = summaryQ.data?.medicationAdherence ?? [];
 
   const adherencePct = useMemo(() => {
-    const rows = adherenceQ.data?.adherence ?? [];
-    const taken = rows.reduce((s, r) => s + r.taken, 0);
-    const total = rows.reduce((s, r) => s + r.taken + r.missed, 0);
+    const taken = medRows.reduce((s, r) => s + r.taken, 0);
+    const total = medRows.reduce((s, r) => s + r.taken + r.missed, 0);
     return total > 0 ? Math.round((taken / total) * 100) : 0;
-  }, [adherenceQ.data]);
+  }, [medRows]);
 
-  const vitalsNarrative = extractNarrative(summaryQ.data?.vitalsSummary);
-  const symptomsNarrative = extractNarrative(summaryQ.data?.symptomLog);
-
-  const conditionList =
-    senior?.conditions?.length ? senior.conditions.join(', ') : 'No conditions recorded';
+  const overview = summaryQ.data?.overview ?? null;
+  const vitalsNarrative = summaryQ.data?.vitalsSummary?.narrative ?? null;
+  const symptomsNarrative = summaryQ.data?.symptomLog?.narrative ?? null;
 
   const handleGenerateSummary = async () => {
     if (!userId) return;
@@ -183,7 +160,7 @@ export default function NeoCareSummaryScreen() {
     }
   };
 
-  const contentLoading = summaryQ.isLoading || medsQ.isLoading || adherenceQ.isLoading;
+  const contentLoading = summaryQ.isLoading;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -238,13 +215,32 @@ export default function NeoCareSummaryScreen() {
                 <Text style={styles.seniorTagText}>Linked NeoSenior</Text>
               </View>
               <Text style={styles.patientName}>{senior.fullName}</Text>
+
+              {!!calcAge(senior.dateOfBirth) && (
+                <View style={styles.patientRow}>
+                  <Text style={styles.patientLabel}>Age</Text>
+                  <Text style={styles.patientValue}>{calcAge(senior.dateOfBirth)}</Text>
+                </View>
+              )}
+              {senior.conditions.length > 0 && (
+                <View style={styles.patientRow}>
+                  <Text style={styles.patientLabel}>Conditions</Text>
+                  <Text style={[styles.patientValue, { flex: 1 }]} numberOfLines={3}>
+                    {senior.conditions.join(', ')}
+                  </Text>
+                </View>
+              )}
               <View style={styles.patientRow}>
-                <Text style={styles.patientLabel}>Condition</Text>
-                <Text style={styles.patientValue} numberOfLines={2}>
-                  {conditionList}
-                </Text>
+                <Text style={styles.patientLabel}>NSR ID</Text>
+                <Text style={styles.patientValue}>{senior.neoSeniorId}</Text>
               </View>
               <View style={styles.patientRow}>
+                <Text style={styles.patientLabel}>Link Status</Text>
+                <Text style={styles.patientValue}>
+                  {senior.status.charAt(0).toUpperCase() + senior.status.slice(1)}
+                </Text>
+              </View>
+              <View style={[styles.patientRow, { marginBottom: 0 }]}>
                 <Text style={styles.patientLabel}>Reporting Period</Text>
                 <Text style={styles.patientValue}>{buildDateRange(summaryDays)}</Text>
               </View>
@@ -254,6 +250,13 @@ export default function NeoCareSummaryScreen() {
               <ActivityIndicator color={Brand.primary} style={{ marginTop: Spacing['2xl'] }} />
             ) : (
               <>
+                {/* Overview Card — shown only when the LLM produced one */}
+                {!!overview && (
+                  <SummaryCard title="Overview">
+                    <Text style={card.narrativeText}>{overview}</Text>
+                  </SummaryCard>
+                )}
+
                 {/* Medication Adherence Card */}
                 <SummaryCard
                   title="Medication Adherence"
@@ -261,10 +264,10 @@ export default function NeoCareSummaryScreen() {
                     <Text style={card.adherencePct}>{adherencePct}%</Text>
                   }
                 >
-                  {activeMeds.length > 0 ? (
-                    activeMeds.map((m, idx) => (
+                  {medRows.length > 0 ? (
+                    medRows.map((m, idx) => (
                       <MedRow
-                        key={m.id}
+                        key={idx}
                         name={m.name}
                         dosage={m.dosage}
                         frequency={m.frequency}
@@ -272,7 +275,7 @@ export default function NeoCareSummaryScreen() {
                       />
                     ))
                   ) : (
-                    <Text style={card.noDataText}>No active medications on record.</Text>
+                    <Text style={card.noDataText}>No medication data for this period.</Text>
                   )}
                 </SummaryCard>
 
@@ -463,6 +466,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.lg,
     padding: Spacing.lg,
     marginBottom: Spacing.xl,
+    backgroundColor: '#FFF6E6',
   },
   seniorTag: {
     flexDirection: 'row',

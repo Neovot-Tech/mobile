@@ -85,3 +85,28 @@ export type JobStatus =
   | 'completed'
   | 'needs_classification'
   | 'failed';
+
+export type TriageStatus = 'pending' | 'answered' | 'skipped' | 'expired';
+
+export interface TriageQuestion {
+  question: string;
+  options: string[];
+}
+
+export interface TriageFollowup {
+  id: string;
+  status: TriageStatus;
+  territories: string[];
+  questions: TriageQuestion[];
+}
+
+export interface TriageAnswer {
+  question: string;
+  answer: string;
+}
+
+export interface TriageResponse {
+  tier: string;
+  reason: string;
+  upgraded: boolean;
+}

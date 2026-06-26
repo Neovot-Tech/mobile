@@ -1,5 +1,15 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Share, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  Pressable,
+  ActivityIndicator,
+  StatusBar,
+  Share,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,289 +17,454 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Clipboard from 'expo-clipboard';
 
-import Screen from '../../components/Screen';
-import BrandAlert from '../../components/BrandAlert';
 import { inviteNeoCare } from '../../services/onboarding.service';
-import { getMyData, deleteMyAccount } from '../../services/users.service';
+import { getMyProfile, getMyData, deleteMyAccount } from '../../services/users.service';
 import { logout as logoutApi } from '../../services/auth.service';
 import { useAuthStore } from '../../store/auth.store';
 import { PreferredLang } from '../../services/types';
 import { NeoSeniorAppStackParamList } from '../../navigation/types';
+import Logo from '../../components/Logo';
+import BrandAlert from '../../components/BrandAlert';
 import { Colors, Brand, Fonts, FontSize, Spacing, BorderRadius } from '../../theme';
 
+// ─── Screen-specific tokens ───────────────────────────────────────────────────
+
+const SIGN_OUT_RED = '#FF2D2D';
+const AVATAR_HALO = '#C2EAF2';
+const ROW_DIVIDER = '#EFEBE4';
+const CARD_BORDER = '#FFE6D5';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join('');
+}
+
+// ─── Row sub-components (mirrors NeoCare settings pattern) ────────────────────
+
+function InfoRow({
+  label,
+  value,
+  showDivider = true,
+}: {
+  label: string;
+  value: string;
+  showDivider?: boolean;
+}) {
+  return (
+    <View style={[row.base, showDivider && row.divider]}>
+      <Text style={row.label}>{label}</Text>
+      <Text style={row.value} numberOfLines={1} ellipsizeMode="tail">
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function ActionRow({
+  label,
+  value,
+  onPress,
+  showDivider = true,
+}: {
+  label: string;
+  value?: string;
+  onPress: () => void;
+  showDivider?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }) => [row.base, showDivider && row.divider, pressed && row.pressed]}
+    >
+      <Text style={row.label}>{label}</Text>
+      <View style={row.trailingGroup}>
+        {!!value && (
+          <Text style={row.value} numberOfLines={1} ellipsizeMode="tail">
+            {value}
+          </Text>
+        )}
+        <Ionicons name="chevron-forward" size={16} color={Brand.mutedTeal} />
+      </View>
+    </Pressable>
+  );
+}
+
+function SignOutRow({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }) => [row.base, pressed && row.pressed]}
+    >
+      <Text style={row.signOut}>Sign Out</Text>
+    </Pressable>
+  );
+}
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
+
 export default function NeoSeniorSettingsScreen() {
-  const { t, i18n } = useTranslation();
+  const { i18n } = useTranslation();
+  const insets = useSafeAreaInsets();
   const { user, setUser, logout } = useAuthStore();
   const navigation = useNavigation<NativeStackNavigationProp<NeoSeniorAppStackParamList>>();
-  const [exportError, setExportError] = useState<string | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState(false);
 
+  const [langVisible, setLangVisible] = useState(false);
+  const [privacyVisible, setPrivacyVisible] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  // ── Data ───────────────────────────────────────────────────────────────────
+  const profileQ = useQuery({ queryKey: ['myProfile'], queryFn: getMyProfile });
   const inviteQ = useQuery({
     queryKey: ['inviteNeoCare'],
     queryFn: inviteNeoCare,
     enabled: !user?.neoSeniorId,
   });
-  const nsr = user?.neoSeniorId ?? inviteQ.data?.neoSeniorId;
 
+  const displayName = profileQ.data?.fullName ?? user?.displayName ?? '';
+  const contact = user?.email ?? profileQ.data?.phone ?? user?.phone ?? '—';
+  const address = profileQ.data?.address ?? '—';
+  const nsr = user?.neoSeniorId ?? inviteQ.data?.neoSeniorId;
+  const currentLang = (i18n.language ?? 'en').startsWith('en') ? 'English' : 'Twi';
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
   const setLanguage = (lang: PreferredLang) => {
     i18n.changeLanguage(lang);
     if (user) setUser({ ...user, language: lang });
   };
 
   const handleExport = async () => {
+    setPrivacyVisible(false);
     try {
       const data = await getMyData();
       await Share.share({ message: JSON.stringify(data, null, 2) });
     } catch {
-      setExportError(t('common.error'));
+      setExportError('Could not export data. Please try again.');
     }
   };
-
-  const handleDelete = () => setDeleteConfirm(true);
 
   const confirmDelete = async () => {
     setDeleteConfirm(false);
-    try {
-      await deleteMyAccount();
-    } finally {
-      logout();
-    }
+    try { await deleteMyAccount(); } finally { logout(); }
   };
 
-  const handleLogout = async () => {
+  const handleSignOut = async () => {
     await logoutApi();
     logout();
   };
 
-  const currentLang = (i18n.language ?? 'en').startsWith('tw') ? 'tw' : 'en';
-
   return (
-    <Screen contentContainerStyle={styles.content}>
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
+
+      {/* Header */}
+      <View style={styles.header}>
+        <Logo />
+        <View style={styles.userCluster}>
+          {displayName ? (
+            <Text style={styles.headerName} numberOfLines={1}>
+              {displayName.trim()}
+            </Text>
+          ) : null}
+          <View style={styles.avatarSmall}>
+            <Text style={styles.avatarSmallInitials}>
+              {displayName ? getInitials(displayName) : '?'}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
+      >
+        {/* Hero card */}
+        <View style={styles.heroCard}>
+          <View style={styles.heroAvatar}>
+            <Text style={styles.heroInitials}>
+              {displayName ? getInitials(displayName) : '?'}
+            </Text>
+          </View>
+          <View style={styles.heroText}>
+            <Text style={styles.heroName} numberOfLines={1}>
+              {displayName || 'Your Name'}
+            </Text>
+            <Text style={styles.heroRole}>NeoSenior</Text>
+          </View>
+        </View>
+
+        {/* 1. Personal */}
+        <Text style={styles.sectionHeader}>Personal</Text>
+        <View style={styles.card}>
+          <InfoRow label="Full Name" value={displayName || '—'} />
+          <InfoRow label="Contact" value={contact} />
+          <InfoRow label="Address" value={address} showDivider={false} />
+        </View>
+
+        {/* 2. My Profile */}
+        <Text style={[styles.sectionHeader, { marginTop: Spacing.xl }]}>My Profile</Text>
+        <View style={styles.card}>
+          <ActionRow
+            label="Edit my profile"
+            onPress={() => nsr && navigation.navigate('EditProfile', { nsrId: nsr })}
+            showDivider={false}
+          />
+        </View>
+
+        {/* 3. Sharing & Caregivers */}
+        <Text style={[styles.sectionHeader, { marginTop: Spacing.xl }]}>
+          Sharing & Caregivers
+        </Text>
+
+        {/* NSR ID card */}
+        {nsr ? (
+          <View style={styles.nsrCard}>
+            <Text style={styles.nsrLabel}>YOUR NEOSENIOR ID</Text>
+            <Text style={styles.nsrCode}>{nsr}</Text>
+            <View style={styles.nsrActions}>
+              <Pressable
+                style={styles.nsrCopyBtn}
+                onPress={() => Clipboard.setStringAsync(nsr)}
+                accessibilityRole="button"
+                accessibilityLabel="Copy NeoSenior ID"
+              >
+                <Ionicons name="copy-outline" size={18} color="#fff" />
+                <Text style={styles.nsrCopyText}>Copy</Text>
+              </Pressable>
+              <Pressable
+                style={styles.nsrShareBtn}
+                onPress={() => Share.share({ message: nsr })}
+                accessibilityRole="button"
+                accessibilityLabel="Share NeoSenior ID"
+              >
+                <Ionicons name="share-social-outline" size={18} color={Brand.primary} />
+                <Text style={styles.nsrShareText}>Share</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : inviteQ.isLoading ? (
+          <ActivityIndicator
+            color={Brand.primary}
+            style={{ marginVertical: Spacing.lg }}
+          />
+        ) : null}
+
+        <View style={styles.card}>
+          <ActionRow
+            label="Caregiver Requests"
+            onPress={() => navigation.navigate('CaregiverRequests')}
+            showDivider={false}
+          />
+        </View>
+
+        {/* 4. Account */}
+        <Text style={[styles.sectionHeader, { marginTop: Spacing.xl }]}>Account</Text>
+        <View style={styles.card}>
+          <ActionRow
+            label="Language"
+            value={currentLang}
+            onPress={() => setLangVisible(true)}
+          />
+          <ActionRow
+            label="Privacy & Data"
+            onPress={() => setPrivacyVisible(true)}
+          />
+          <SignOutRow onPress={handleSignOut} />
+        </View>
+      </ScrollView>
+
+      {/* Language picker */}
+      <BrandAlert
+        visible={langVisible}
+        title="Select Language"
+        message="Choose your preferred display language."
+        buttons={[
+          {
+            label: 'Twi',
+            variant: currentLang === 'Twi' ? 'filled' : 'ghost',
+            onPress: () => { setLanguage('tw'); setLangVisible(false); },
+          },
+          {
+            label: 'English',
+            variant: currentLang === 'English' ? 'filled' : 'ghost',
+            onPress: () => { setLanguage('en'); setLangVisible(false); },
+          },
+        ]}
+        onDismiss={() => setLangVisible(false)}
+      />
+
+      {/* Privacy & Data */}
+      <BrandAlert
+        visible={privacyVisible}
+        title="Privacy & Data"
+        message="Manage your personal data stored in Neovot."
+        buttons={[
+          {
+            label: 'Delete account',
+            variant: 'ghost',
+            destructive: true,
+            onPress: () => { setPrivacyVisible(false); setDeleteConfirm(true); },
+          },
+          {
+            label: 'Export my data',
+            variant: 'filled',
+            onPress: handleExport,
+          },
+        ]}
+        onDismiss={() => setPrivacyVisible(false)}
+      />
+
+      {/* Delete confirmation */}
+      <BrandAlert
+        visible={deleteConfirm}
+        title="Delete Account"
+        message="Your account will be soft-deleted immediately and permanently removed after 30 days. This cannot be undone."
+        buttons={[
+          { label: 'Cancel', variant: 'ghost', onPress: () => setDeleteConfirm(false) },
+          { label: 'Delete', variant: 'filled', destructive: true, onPress: confirmDelete },
+        ]}
+        onDismiss={() => setDeleteConfirm(false)}
+      />
+
+      {/* Export error */}
       <BrandAlert
         visible={!!exportError}
-        title={t('common.error')}
+        title="Export Failed"
         message={exportError ?? ''}
         onDismiss={() => setExportError(null)}
       />
-      <BrandAlert
-        visible={deleteConfirm}
-        title={t('neoSeniorSettings.deleteConfirmTitle')}
-        message={t('neoSeniorSettings.deleteConfirmBody')}
-        onDismiss={() => setDeleteConfirm(false)}
-        buttons={[
-          { label: t('common.cancel'), variant: 'ghost', onPress: () => setDeleteConfirm(false) },
-          { label: t('neoSeniorSettings.deleteConfirmCta'), variant: 'filled', destructive: true, onPress: confirmDelete },
-        ]}
-      />
-      <Text style={styles.h1}>{t('neoSeniorSettings.title')}</Text>
-
-      {/* Profile */}
-      <Text style={styles.sectionLabel}>{t('neoSeniorSettings.profile')}</Text>
-      <Pressable
-        style={({ pressed }) => [styles.rowCard, !nsr && styles.rowCardDisabled, pressed && styles.rowCardPressed]}
-        onPress={() => nsr && navigation.navigate('EditProfile', { nsrId: nsr })}
-        disabled={!nsr}
-        accessibilityRole="button"
-      >
-        <View style={styles.iconCirclePeach}>
-          <Ionicons name="person-outline" size={24} color={Brand.primary} />
-        </View>
-        <Text style={styles.rowCardLabel}>{t('neoSeniorSettings.editProfile')}</Text>
-        <Ionicons name="chevron-forward" size={20} color="#c2ccce" />
-      </Pressable>
-
-      {/* Sharing & caregivers */}
-      <Text style={styles.sectionLabel}>{t('neoSeniorSettings.sharing')}</Text>
-      <Text style={styles.hint}>{t('neoSeniorSettings.yourIdHint')}</Text>
-
-      {nsr ? (
-        <View style={styles.nsrCard}>
-          <Text style={styles.nsrCardLabel}>YOUR NEOSENIOR ID</Text>
-          <Text style={styles.nsrCode}>{nsr}</Text>
-          <View style={styles.nsrActions}>
-            <Pressable
-              style={styles.nsrCopyBtn}
-              onPress={() => Clipboard.setStringAsync(nsr)}
-              accessibilityRole="button"
-              accessibilityLabel={t('common.copy')}
-            >
-              <Ionicons name="copy-outline" size={20} color="#fff" />
-              <Text style={styles.nsrCopyText}>{t('common.copy')}</Text>
-            </Pressable>
-            <Pressable
-              style={styles.nsrShareBtn}
-              onPress={() => Share.share({ message: nsr })}
-              accessibilityRole="button"
-            >
-              <Ionicons name="share-social-outline" size={20} color={Brand.primary} />
-              <Text style={styles.nsrShareText}>Share</Text>
-            </Pressable>
-          </View>
-        </View>
-      ) : inviteQ.isLoading ? (
-        <ActivityIndicator color={Brand.primary} style={{ marginVertical: Spacing.lg }} />
-      ) : null}
-
-      <Pressable
-        style={({ pressed }) => [styles.rowCard, styles.rowCardMarginBottom, pressed && styles.rowCardPressed]}
-        onPress={() => navigation.navigate('CaregiverRequests')}
-        accessibilityRole="button"
-      >
-        <View style={styles.iconCirclePeach}>
-          <Ionicons name="people-outline" size={24} color={Brand.primary} />
-        </View>
-        <Text style={styles.rowCardLabel}>{t('neoSeniorSettings.caregiverRequests')}</Text>
-        <Ionicons name="chevron-forward" size={20} color="#c2ccce" />
-      </Pressable>
-
-      {/* Preferences */}
-      <Text style={styles.sectionLabel}>{t('neoSeniorSettings.preferences')}</Text>
-      <View style={[styles.card, styles.cardMarginBottom]}>
-        <View style={styles.langRow}>
-          <Text style={styles.rowCardLabel}>{t('neoSeniorSettings.language')}</Text>
-          <View style={styles.segment}>
-            {(['en', 'tw'] as PreferredLang[]).map((lang) => {
-              const active = currentLang === lang;
-              return (
-                <Pressable
-                  key={lang}
-                  onPress={() => setLanguage(lang)}
-                  style={[styles.segmentBtn, active && styles.segmentActive]}
-                  accessibilityRole="button"
-                >
-                  <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                    {lang === 'en' ? 'English' : 'Twi'}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-      </View>
-
-      {/* Account */}
-      <Text style={styles.sectionLabel}>{t('neoSeniorSettings.account')}</Text>
-      <View style={styles.card}>
-        <Pressable
-          style={({ pressed }) => [styles.accountRow, pressed && styles.rowCardPressed]}
-          onPress={handleExport}
-          accessibilityRole="button"
-        >
-          <Ionicons name="download-outline" size={22} color={Brand.primaryForm} />
-          <Text style={styles.accountRowLabel}>{t('neoSeniorSettings.exportData')}</Text>
-          <Ionicons name="chevron-forward" size={20} color="#c2ccce" />
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.accountRow, styles.accountRowDivider, pressed && styles.rowCardPressed]}
-          onPress={handleLogout}
-          accessibilityRole="button"
-        >
-          <Ionicons name="log-out-outline" size={22} color={Brand.primaryForm} />
-          <Text style={styles.accountRowLabel}>{t('neoSeniorSettings.logout')}</Text>
-          <Ionicons name="chevron-forward" size={20} color="#c2ccce" />
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.accountRow, styles.accountRowDivider, pressed && styles.rowCardPressed]}
-          onPress={handleDelete}
-          accessibilityRole="button"
-        >
-          <Ionicons name="trash-outline" size={22} color={Colors.error} />
-          <Text style={[styles.accountRowLabel, { color: Colors.error }]}>{t('neoSeniorSettings.deleteAccount')}</Text>
-          <Ionicons name="chevron-forward" size={20} color="#f0b8b0" />
-        </Pressable>
-      </View>
-    </Screen>
+    </View>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  content: { padding: Spacing.xl, paddingBottom: Spacing['4xl'] },
+  root: { flex: 1, backgroundColor: Brand.bgCream },
 
-  h1: {
-    fontFamily: Fonts.heading,
-    fontSize: FontSize['3xl'],
-    color: Brand.primary,
-    marginTop: 6,
-    marginBottom: 22,
-  },
-
-  sectionLabel: {
-    fontFamily: Fonts.heading,
-    fontSize: 15,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    color: Brand.mutedTeal,
-    marginBottom: 10,
-  },
-
-  hint: {
-    fontFamily: Fonts.body,
-    fontSize: FontSize.lg,
-    lineHeight: 27,
-    color: Brand.bodyText,
-    marginBottom: 14,
-  },
-
-  rowCard: {
+  header: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 14,
-    backgroundColor: Colors.surface,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: Brand.borderWarm,
-    padding: 18,
-    marginBottom: 26,
-    shadowColor: Brand.primary,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
+    paddingHorizontal: Spacing.lg,
+    height: 64,
+    backgroundColor: '#F5F1E5',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: ROW_DIVIDER,
   },
-  rowCardMarginBottom: { marginBottom: 26 },
-  rowCardDisabled: { opacity: 0.4 },
-  rowCardPressed: { opacity: 0.7 },
-  rowCardLabel: {
-    flex: 1,
-    fontFamily: Fonts.heading,
-    fontSize: 19,
+  userCluster: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headerName: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: FontSize.sm,
     color: Brand.primary,
+    maxWidth: 120,
   },
-  iconCirclePeach: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  avatarSmall: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: Brand.accentPeach,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  avatarSmallInitials: { fontFamily: Fonts.heading, fontSize: 13, color: Brand.primary },
 
-  // NSR card
+  scrollContent: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.xl,
+  },
+
+  // Hero card
+  heroCard: {
+    backgroundColor: Brand.primary,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.xl,
+  },
+  heroAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: AVATAR_HALO,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: Spacing.base,
+    flexShrink: 0,
+  },
+  heroInitials: {
+    fontFamily: Fonts.heading,
+    fontSize: 18,
+    fontWeight: '700',
+    color: Brand.primary,
+  },
+  heroText: { flex: 1 },
+  heroName: {
+    fontFamily: Fonts.heading,
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.white,
+    marginBottom: 4,
+  },
+  heroRole: {
+    fontFamily: Fonts.body,
+    fontSize: FontSize.sm,
+    color: AVATAR_HALO,
+  },
+
+  sectionHeader: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: FontSize.base,
+    fontWeight: '700',
+    color: Brand.primary,
+    marginBottom: Spacing.md,
+    paddingHorizontal: 4,
+  },
+
+  card: {
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    paddingHorizontal: Spacing.base,
+    overflow: 'hidden',
+  },
+
+  // NSR ID card
   nsrCard: {
     backgroundColor: Brand.primary,
     borderRadius: 20,
     padding: 22,
-    marginBottom: 14,
+    marginBottom: Spacing.base,
     shadowColor: Brand.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 12,
     elevation: 4,
   },
-  nsrCardLabel: {
+  nsrLabel: {
     fontFamily: Fonts.heading,
-    fontSize: 13,
+    fontSize: 12,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
     color: 'rgba(255,255,255,0.6)',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   nsrCode: {
     fontFamily: 'monospace',
-    fontSize: 42,
+    fontSize: 38,
     fontWeight: '700',
     letterSpacing: 3,
-    color: '#fff',
+    color: '#FFFFFF',
     marginBottom: 18,
   },
   nsrActions: {
@@ -298,7 +473,7 @@ const styles = StyleSheet.create({
   },
   nsrCopyBtn: {
     flex: 1,
-    height: 52,
+    height: 48,
     backgroundColor: 'rgba(255,255,255,0.12)',
     borderRadius: 12,
     flexDirection: 'row',
@@ -308,13 +483,13 @@ const styles = StyleSheet.create({
   },
   nsrCopyText: {
     fontFamily: Fonts.heading,
-    fontSize: 16,
-    color: '#fff',
+    fontSize: 15,
+    color: '#FFFFFF',
   },
   nsrShareBtn: {
     flex: 1,
-    height: 52,
-    backgroundColor: '#fff',
+    height: 48,
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
@@ -323,65 +498,49 @@ const styles = StyleSheet.create({
   },
   nsrShareText: {
     fontFamily: Fonts.heading,
-    fontSize: 16,
+    fontSize: 15,
     color: Brand.primary,
   },
+});
 
-  // Preferences card
-  card: {
-    backgroundColor: Colors.surface,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: Brand.borderWarm,
-    paddingHorizontal: 18,
-    shadowColor: Brand.primary,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
-  },
-  cardMarginBottom: { marginBottom: 26 },
-  langRow: {
+const row = StyleSheet.create({
+  base: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 18,
+    alignItems: 'center',
+    minHeight: 54,
+    paddingVertical: Spacing.sm,
   },
-  segment: {
-    flexDirection: 'row',
-    backgroundColor: '#f1f0ea',
-    borderRadius: 12,
-    padding: 4,
+  divider: {
+    borderBottomWidth: 1,
+    borderBottomColor: ROW_DIVIDER,
   },
-  segmentBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 9,
+  pressed: { opacity: 0.65 },
+  label: {
+    fontFamily: Fonts.bodyMedium,
+    fontSize: 15,
+    fontWeight: '500',
+    color: Brand.primary,
+    flexShrink: 0,
+    marginRight: Spacing.sm,
   },
-  segmentActive: { backgroundColor: Brand.primaryForm },
-  segmentText: {
-    fontFamily: Fonts.heading,
-    fontSize: 16,
+  value: {
+    fontFamily: Fonts.body,
+    fontSize: FontSize.sm,
     color: Brand.mutedTeal,
+    flexShrink: 1,
+    textAlign: 'right',
   },
-  segmentTextActive: { color: '#fff' },
-
-  // Account rows
-  accountRow: {
+  trailingGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    padding: 18,
-    minHeight: 56,
+    gap: 6,
+    flexShrink: 1,
   },
-  accountRowDivider: {
-    borderTopWidth: 1,
-    borderTopColor: '#f3ead6',
-  },
-  accountRowLabel: {
-    flex: 1,
-    fontFamily: Fonts.heading,
-    fontSize: 18,
-    color: Brand.primary,
+  signOut: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 15,
+    fontWeight: '600',
+    color: SIGN_OUT_RED,
   },
 });

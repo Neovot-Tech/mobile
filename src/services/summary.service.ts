@@ -8,12 +8,26 @@ import { NeoSeniorUserId } from './types';
 
 export type SummaryWindow = 7 | 14 | 30;
 
+export interface SummarySection {
+  narrative: string | null;
+  items: unknown[];
+}
+
+export interface MedAdherenceRow {
+  name: string;
+  dosage?: string;
+  frequency?: string;
+  taken: number;
+  missed: number;
+}
+
 export interface DoctorSummary {
   windowDays: number;
+  overview: string | null;
   profile: Record<string, unknown>;
-  vitalsSummary: unknown;
-  medicationAdherence: unknown;
-  symptomLog: unknown;
+  vitalsSummary: SummarySection | null;
+  medicationAdherence: MedAdherenceRow[];
+  symptomLog: SummarySection | null;
   aiFlags: unknown;
 }
 
@@ -23,18 +37,26 @@ export async function getDoctorSummary(
 ): Promise<DoctorSummary> {
   const { data } = await http.get<{
     window_days: number;
+    overview?: string | null;
     profile: Record<string, unknown>;
-    vitals_summary: unknown;
+    vitals_summary?: { narrative?: string | null; items?: unknown[] } | null;
     medication_adherence: unknown;
-    symptom_log: unknown;
+    symptom_log?: { narrative?: string | null; items?: unknown[] } | null;
     ai_flags: unknown;
   }>(Endpoints.summary.json(userId), { params: { days } });
   return {
     windowDays: data.window_days,
+    overview: data.overview ?? null,
     profile: data.profile,
-    vitalsSummary: data.vitals_summary,
-    medicationAdherence: data.medication_adherence,
-    symptomLog: data.symptom_log,
+    vitalsSummary: data.vitals_summary
+      ? { narrative: data.vitals_summary.narrative ?? null, items: data.vitals_summary.items ?? [] }
+      : null,
+    medicationAdherence: Array.isArray(data.medication_adherence)
+      ? (data.medication_adherence as MedAdherenceRow[])
+      : [],
+    symptomLog: data.symptom_log
+      ? { narrative: data.symptom_log.narrative ?? null, items: data.symptom_log.items ?? [] }
+      : null,
     aiFlags: data.ai_flags,
   };
 }
