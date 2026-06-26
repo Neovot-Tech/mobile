@@ -38,7 +38,11 @@ export const Endpoints = {
     remove: (linkId: string) => `/neo-care-links/${linkId}`,
   },
   uploads: { signedUrl: '/uploads/signed-url' },
-  jobs: { submit: '/jobs', status: (jobId: string) => `/jobs/${jobId}` },
+  jobs: {
+    submit: '/jobs',
+    status: (jobId: string) => `/jobs/${jobId}`,
+    triageResponse: (jobId: string) => `/jobs/${jobId}/triage-response`,
+  },
   healthLogs: {
     feed: (userId: string) => `/health-logs/${userId}`,
     latest: (userId: string) => `/health-logs/${userId}/latest`,

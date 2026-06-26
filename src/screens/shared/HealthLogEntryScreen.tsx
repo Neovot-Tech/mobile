@@ -1,67 +1,127 @@
 import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  StatusBar,
+  ActivityIndicator,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { RouteProp, useRoute } from '@react-navigation/native';
+import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { Pressable } from 'react-native';
 
-import Screen from '../../components/Screen';
-import BackHeader from '../../components/BackHeader';
 import { getHealthLogEntry } from '../../services/healthLogs.service';
 import { getApiErrorMessage } from '../../services/http';
+import { useAuthStore } from '../../store/auth.store';
 import { NeoSeniorAppStackParamList } from '../../navigation/types';
-import { Colors, Brand, Fonts, FontSize, Spacing } from '../../theme';
+import { Colors, Brand, Fonts, FontSize, Spacing, BorderRadius } from '../../theme';
 
-// ─── Tier badge config ─────────────────────────────────────────────────────────
+// ─── Design tokens ────────────────────────────────────────────────────────────
 
-type TierConfig = {
-  bg: string;
-  border: string;
-  fg: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
+const CARD_BORDER = '#FFE6C2';
+const ROW_DIVIDER = '#EFEBE4';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function getInitials(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join('');
+}
+
+const LOG_LABEL: Record<string, string> = {
+  symptom: 'Symptom Report',
+  vitals: 'Vitals Reading',
+  medication: 'Medication Log',
+  prescription: 'Prescription Scan',
 };
 
-const TIER_CONFIG: Record<string, TierConfig> = {
-  urgent: {
-    bg: '#fbe7e7',
-    border: 'rgba(163,38,31,0.18)',
-    fg: '#a3261f',
-    icon: 'warning-outline',
-    label: 'Urgent',
-  },
-  warning: {
-    bg: '#fdf0e1',
-    border: 'rgba(154,91,20,0.18)',
-    fg: '#9a5b14',
-    icon: 'warning-outline',
-    label: 'Monitor',
-  },
-  normal: {
-    bg: '#e6f0ec',
-    border: 'rgba(31,107,79,0.15)',
-    fg: '#1f6b4f',
-    icon: 'checkmark-circle-outline',
-    label: 'Normal',
-  },
+const LOG_ICON: Record<string, React.ComponentProps<typeof Ionicons>['name']> = {
+  symptom: 'create-outline',
+  vitals: 'heart-circle-outline',
+  medication: 'medkit-outline',
+  prescription: 'document-text-outline',
 };
 
-function getTierConfig(tier: string): TierConfig {
-  return TIER_CONFIG[tier] ?? TIER_CONFIG.normal;
+const SEVERITY_BG: Record<string, string> = {
+  urgent: '#EF5350',
+  warning: '#F9A825',
+  info: '#F9A825',
+  none: '#00BFA5',
+};
+
+const SEVERITY_LABEL: Record<string, string> = {
+  urgent: 'Alert',
+  warning: 'Watch',
+  info: 'Watch',
+  none: 'Normal',
+};
+
+function formatDateTime(isoStr: string): string {
+  const d = new Date(isoStr);
+  const DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const h = d.getHours();
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const time = `${h % 12 || 12}:${m} ${h >= 12 ? 'PM' : 'AM'}`;
+  return `${DAY[d.getDay()]}, ${d.getDate()} ${MON[d.getMonth()]}  ·  ${time}`;
 }
 
 function formatKey(k: string): string {
-  return k
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function buildEntityRows(
+  entities: Record<string, unknown>,
+): Array<{ key: string; value: string }> {
+  const rows: Array<{ key: string; value: string }> = [];
+  const seen = new Set<string>();
+
+  // Compose BP from the two component keys
+  if (entities.bp_systolic != null && entities.bp_diastolic != null) {
+    rows.push({ key: 'Blood Pressure', value: `${entities.bp_systolic}/${entities.bp_diastolic}` });
+    seen.add('bp_systolic');
+    seen.add('bp_diastolic');
+  }
+
+  // Blood sugar — try mmol then mgdl then approx
+  const sugarKey = ['blood_sugar_mmol', 'blood_sugar_mgdl', 'blood_sugar_mmol_approx'].find(
+    (k) => entities[k] != null,
+  );
+  if (sugarKey) {
+    const unit = sugarKey.includes('mgdl') ? 'mg/dL' : 'mmol/L';
+    rows.push({ key: 'Blood Sugar', value: `${entities[sugarKey]} ${unit}` });
+    seen.add(sugarKey);
+  }
+
+  // Remaining keys
+  for (const [k, v] of Object.entries(entities)) {
+    if (!seen.has(k) && v != null && v !== '') {
+      rows.push({ key: formatKey(k), value: String(v) });
+    }
+  }
+
+  return rows;
 }
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function HealthLogEntryScreen() {
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const route = useRoute<RouteProp<NeoSeniorAppStackParamList, 'HealthLogEntry'>>();
   const { logId } = route.params;
+
+  const displayName = useAuthStore((s) => s.user?.displayName ?? '');
 
   const entryQ = useQuery({
     queryKey: ['healthLogEntry', logId],
@@ -69,94 +129,134 @@ export default function HealthLogEntryScreen() {
   });
   const entry = entryQ.data;
 
+  const initials = getInitials(displayName);
+  const severityBg = entry ? (SEVERITY_BG[entry.escalationTier] ?? '#00BFA5') : '#00BFA5';
+  const severityLabel = entry ? (SEVERITY_LABEL[entry.escalationTier] ?? 'Normal') : '';
+  const entityRows = entry?.extractedEntities
+    ? buildEntityRows(entry.extractedEntities)
+    : [];
+
   return (
-    <Screen contentContainerStyle={styles.content}>
-      <BackHeader title={t('logEntry.title')} />
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
+
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <Pressable
+            onPress={() => navigation.goBack()}
+            style={styles.backBtn}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
+            <Ionicons name="chevron-back" size={24} color={Brand.primary} />
+          </Pressable>
+          <Text style={styles.headerTitle}>Log Entry</Text>
+        </View>
+        <View style={styles.userCluster}>
+          {displayName ? (
+            <Text style={styles.headerName} numberOfLines={1}>{displayName.trim()}</Text>
+          ) : null}
+          <View style={styles.avatarCircle}>
+            <Text style={styles.avatarInitials}>{initials || '?'}</Text>
+          </View>
+        </View>
+      </View>
 
       {entryQ.isLoading ? (
-        <ActivityIndicator color={Brand.primary} style={{ marginTop: Spacing['2xl'] }} />
+        <View style={styles.loadingBox}>
+          <ActivityIndicator size="large" color={Brand.primary} />
+        </View>
       ) : entryQ.isError || !entry ? (
-        <Text style={styles.error}>{getApiErrorMessage(entryQ.error)}</Text>
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>{getApiErrorMessage(entryQ.error)}</Text>
+        </View>
       ) : (
-        <>
-          {/* Meta row */}
-          <View style={styles.metaRow}>
-            <View style={styles.typeBadge}>
-              <Text style={styles.typeBadgeText}>
-                {t(`logEntry.type_${entry.logType}`)}
-              </Text>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 40 }]}
+        >
+          {/* Title row — type + timestamp + tier badge */}
+          <View style={styles.titleRow}>
+            <View style={styles.titleLeft}>
+              <View style={styles.typeIconBox}>
+                <Ionicons
+                  name={LOG_ICON[entry.logType] ?? 'document-outline'}
+                  size={20}
+                  color={Brand.primary}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.logTypeLabel}>
+                  {LOG_LABEL[entry.logType] ?? t(`logEntry.type_${entry.logType}`)}
+                </Text>
+                <Text style={styles.timestamp}>{formatDateTime(entry.loggedAt)}</Text>
+              </View>
             </View>
-            <TierBadge tier={entry.escalationTier} />
-            <Text style={styles.timestamp}>
-              {new Date(entry.loggedAt).toLocaleString()}
-            </Text>
+            <View style={[styles.severityBadge, { backgroundColor: severityBg }]}>
+              <Text style={styles.severityText}>{severityLabel}</Text>
+            </View>
           </View>
 
-          {/* Summary */}
-          <Text style={styles.sectionLabel}>{t('logEntry.summary')}</Text>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryText}>{entry.aiSummary}</Text>
+          {/* Main record card — amber header + white body, same as monitoring log detail */}
+          <View style={styles.recordCard}>
+            <View style={styles.recordHeader}>
+              <Text style={styles.recordHeaderText}>AI Summary</Text>
+            </View>
+            <View style={styles.recordBody}>
+              <Text style={styles.summaryText}>{entry.aiSummary}</Text>
+            </View>
           </View>
 
           {/* Escalation block */}
           {entry.escalationReason && (
-            <View style={styles.escalationBlock}>
-              <Ionicons name="warning-outline" size={22} color="#a3261f" style={{ marginTop: 1 }} />
+            <View style={styles.escalationCard}>
+              <Ionicons name="warning" size={18} color="#a3261f" style={{ marginTop: 1 }} />
               <Text style={styles.escalationText}>{entry.escalationReason}</Text>
             </View>
           )}
 
-          {/* Transcript */}
+          {/* Transcript section */}
           <Text style={styles.sectionLabel}>{t('logEntry.transcript')}</Text>
           {entry.rawTranscript ? (
             <View style={styles.transcriptCard}>
+              <Ionicons
+                name="chatbubble-ellipses-outline"
+                size={16}
+                color={Brand.mutedTeal}
+                style={styles.transcriptIcon}
+              />
               <Text style={styles.transcriptText}>"{entry.rawTranscript}"</Text>
             </View>
           ) : (
             <View style={styles.noTranscriptCard}>
-              <View style={styles.noTranscriptIcon}>
-                <Ionicons name="image-outline" size={30} color="#b89a5b" />
+              <View style={styles.noTranscriptIconBox}>
+                <Ionicons name="image-outline" size={26} color={Brand.mutedTeal} />
               </View>
               <Text style={styles.noTranscriptText}>{t('logEntry.noTranscript')}</Text>
             </View>
           )}
 
-          {/* Details */}
-          {entry.extractedEntities && Object.keys(entry.extractedEntities).length > 0 && (
+          {/* Extracted entities — formatted info rows */}
+          {entityRows.length > 0 && (
             <>
               <Text style={styles.sectionLabel}>{t('logEntry.details')}</Text>
-              <View style={styles.detailsCard}>
-                {Object.entries(entry.extractedEntities).map(([k, v], i, arr) => (
+              <View style={styles.entitiesCard}>
+                {entityRows.map(({ key, value }, i) => (
                   <View
-                    key={k}
-                    style={[styles.kvRow, i < arr.length - 1 && styles.kvDivider]}
+                    key={key}
+                    style={[styles.entityRow, i < entityRows.length - 1 && styles.entityRowDivider]}
                   >
-                    <Text style={styles.kvKey}>{formatKey(k)}</Text>
-                    <Text style={styles.kvVal}>{String(v)}</Text>
+                    <Text style={styles.entityKey}>{key}</Text>
+                    <Text style={styles.entityValue}>{value}</Text>
                   </View>
                 ))}
               </View>
             </>
           )}
-        </>
+        </ScrollView>
       )}
-    </Screen>
-  );
-}
-
-// ─── Tier badge sub-component ─────────────────────────────────────────────────
-
-function TierBadge({ tier }: { tier: string }) {
-  const cfg = getTierConfig(tier);
-  return (
-    <View
-      style={[
-        styles.tierBadge,
-        { backgroundColor: cfg.bg, borderColor: cfg.border },
-      ]}
-    >
-      <Ionicons name={cfg.icon} size={14} color={cfg.fg} />
-      <Text style={[styles.tierBadgeText, { color: cfg.fg }]}>{cfg.label}</Text>
     </View>
   );
 }
@@ -164,186 +264,237 @@ function TierBadge({ tier }: { tier: string }) {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  content: { padding: Spacing.xl, paddingBottom: Spacing['4xl'] },
+  root: { flex: 1, backgroundColor: Brand.bgCream },
 
-  // Meta row
-  metaRow: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    flexWrap: 'wrap',
-    marginBottom: 18,
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    height: 64,
+    backgroundColor: '#F5F1E5',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: ROW_DIVIDER,
   },
-  typeBadge: {
-    borderWidth: 1,
-    borderColor: '#cdd9da',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
+  headerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  backBtn: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 2,
   },
-  typeBadgeText: {
+  headerTitle: {
     fontFamily: Fonts.heading,
-    fontSize: 13,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    color: Brand.primaryForm,
+    fontSize: 17,
+    fontWeight: '700',
+    color: Brand.primary,
   },
-  tierBadge: {
+  userCluster: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headerName: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: FontSize.sm,
+    color: Brand.primary,
+    maxWidth: 100,
+  },
+  avatarCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Brand.accentPeach,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitials: { fontFamily: Fonts.heading, fontSize: 13, color: Brand.primary },
+
+  loadingBox: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  errorBox: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: Spacing.xl },
+  errorText: { fontFamily: Fonts.body, fontSize: FontSize.base, color: Colors.error, textAlign: 'center' },
+
+  scrollContent: { paddingHorizontal: 20, paddingTop: 20 },
+
+  // Title row
+  titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
+    justifyContent: 'space-between',
+    marginBottom: 20,
+    gap: 12,
   },
-  tierBadgeText: {
+  titleLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 14 },
+  typeIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFF6E6',
+    borderWidth: 1,
+    borderColor: '#FFE6D5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  logTypeLabel: {
     fontFamily: Fonts.heading,
-    fontSize: 13,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
+    fontSize: 16,
+    fontWeight: '700',
+    color: Brand.primary,
+    marginBottom: 2,
   },
   timestamp: {
-    fontFamily: Fonts.bodyMedium,
-    fontSize: FontSize.sm,
+    fontFamily: Fonts.body,
+    fontSize: 12,
     color: Brand.mutedTeal,
   },
-
-  // Section labels
-  sectionLabel: {
-    fontFamily: Fonts.heading,
-    fontSize: 14,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    color: Brand.mutedTeal,
-    marginTop: 26,
-    marginBottom: 8,
+  severityBadge: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 12,
+    flexShrink: 0,
+  },
+  severityText: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 
-  // Summary card
-  summaryCard: {
-    backgroundColor: Brand.bgWarmCard,
+  // Main record card (amber header + white body — matches monitoring log detail)
+  recordCard: {
     borderWidth: 1,
-    borderColor: Brand.borderCard,
-    borderRadius: 18,
-    padding: 22,
+    borderColor: CARD_BORDER,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 14,
   },
+  recordHeader: {
+    backgroundColor: '#FCE9B3',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  recordHeaderText: {
+    fontFamily: Fonts.heading,
+    fontSize: FontSize.base,
+    fontWeight: '700',
+    color: Brand.primary,
+  },
+  recordBody: { backgroundColor: '#FFFFFF', padding: 16 },
   summaryText: {
     fontFamily: Fonts.body,
-    fontSize: 20,
-    lineHeight: 31,
+    fontSize: 15,
+    lineHeight: 22,
     color: Brand.primary,
   },
 
   // Escalation
-  escalationBlock: {
+  escalationCard: {
     flexDirection: 'row',
-    gap: 10,
     alignItems: 'flex-start',
-    backgroundColor: '#fbe7e7',
+    gap: 10,
+    backgroundColor: '#FBE7E7',
     borderWidth: 1,
-    borderColor: 'rgba(163,38,31,0.18)',
-    borderRadius: 16,
-    padding: 16,
-    marginTop: 14,
+    borderColor: 'rgba(163,38,31,0.2)',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 14,
   },
   escalationText: {
     fontFamily: Fonts.bodyMedium,
-    fontSize: 16,
-    lineHeight: 23,
+    fontSize: 14,
+    lineHeight: 20,
     color: '#a3261f',
     flex: 1,
   },
 
-  // Transcript
-  transcriptCard: {
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Brand.borderWarm,
-    borderRadius: 18,
-    padding: 18,
-    shadowColor: Brand.primary,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
+  // Section label
+  sectionLabel: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: Brand.mutedTeal,
+    marginBottom: 10,
+    marginTop: 6,
   },
+
+  // Transcript card
+  transcriptCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 14,
+  },
+  transcriptIcon: { marginBottom: 8 },
   transcriptText: {
     fontFamily: Fonts.body,
-    fontSize: FontSize.lg,
-    lineHeight: 28,
-    color: Brand.bodyText,
+    fontSize: 15,
+    lineHeight: 22,
+    color: Brand.primary,
     fontStyle: 'italic',
   },
   noTranscriptCard: {
-    backgroundColor: Colors.surface,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: Brand.borderWarm,
+    borderColor: CARD_BORDER,
     borderStyle: 'dashed',
-    borderRadius: 18,
+    borderRadius: 12,
     paddingVertical: 28,
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     alignItems: 'center',
+    marginBottom: 14,
   },
-  noTranscriptIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: Brand.bgWarmCard,
+  noTranscriptIconBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#FFF6E6',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   noTranscriptText: {
     fontFamily: Fonts.body,
-    fontSize: 17,
-    lineHeight: 26,
+    fontSize: 14,
     color: Brand.mutedTeal,
     textAlign: 'center',
   },
 
-  // Details
-  detailsCard: {
-    backgroundColor: Colors.surface,
+  // Entities card — settings-style info rows
+  entitiesCard: {
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: Brand.borderWarm,
-    borderRadius: 18,
+    borderColor: CARD_BORDER,
+    borderRadius: BorderRadius.lg,
     overflow: 'hidden',
-    shadowColor: Brand.primary,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
+    paddingHorizontal: 16,
+    marginBottom: 14,
   },
-  kvRow: {
+  entityRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    minHeight: 50,
+    paddingVertical: 10,
     gap: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 18,
   },
-  kvDivider: {
+  entityRowDivider: {
     borderBottomWidth: 1,
-    borderBottomColor: '#f3ead6',
+    borderBottomColor: ROW_DIVIDER,
   },
-  kvKey: {
-    fontFamily: Fonts.body,
-    fontSize: 17,
+  entityKey: {
+    fontFamily: Fonts.bodyMedium,
+    fontSize: 14,
     color: Brand.mutedTeal,
-    flexShrink: 1,
+    flexShrink: 0,
   },
-  kvVal: {
+  entityValue: {
     fontFamily: Fonts.heading,
-    fontSize: 17,
+    fontSize: 14,
+    fontWeight: '700',
     color: Brand.primary,
     textAlign: 'right',
     flexShrink: 1,
-  },
-
-  error: {
-    fontFamily: Fonts.body,
-    fontSize: FontSize.base,
-    color: Colors.error,
-    marginTop: Spacing.lg,
   },
 });

@@ -23,7 +23,7 @@ const GOOGLE_DISCOVERY = {
 const isWeb = Platform.OS === 'web';
 
 const redirectUri = makeRedirectUri(
-  isWeb ? {} : { scheme: 'neovot', useProxy: true },
+  isWeb ? {} : { scheme: 'neovot' },
 );
 
 export function useGoogleAuth(role: UserRole) {

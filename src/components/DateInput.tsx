@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, FontSize, Spacing, MinTapTarget } from '../theme';
 
 interface DateInputProps {
-  label: string;
+  label?: string;
   value: string; // ISO 'YYYY-MM-DD' or ''
   onChange: (iso: string) => void;
 }
@@ -93,7 +93,7 @@ export default function DateInput({ label, value, onChange }: DateInputProps) {
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.label}>{label}</Text>
+      {label ? <Text style={styles.label}>{label}</Text> : null}
       <View style={[styles.row, invalid && styles.rowError]}>
         <TextInput
           style={styles.input}

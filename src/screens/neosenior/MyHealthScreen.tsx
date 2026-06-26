@@ -1,532 +1,441 @@
-import React from 'react';
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
-import { useTranslation } from 'react-i18next';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import React, { useMemo, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  Pressable,
+  StatusBar,
+  ActivityIndicator,
+  RefreshControl,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
 
-import Screen from '../../components/Screen';
-import { NeoSeniorAppStackParamList } from '../../navigation/types';
-import Sparkline from '../../components/Sparkline';
-import { getVitalsSummary, getVitalsTrend, VitalSummaryRow } from '../../services/vitals.service';
-import {
-  getMedications,
-  getMedicationDrafts,
-  getAdherence,
-  confirmDrafts,
-  Medication,
-  MedicationDraft,
-} from '../../services/medications.service';
-import { getHealthLogs, HealthLogSummary } from '../../services/healthLogs.service';
 import { useAuthStore } from '../../store/auth.store';
+import { getHealthLogs, HealthLogSummary, EscalationTier } from '../../services/healthLogs.service';
+import { getVitals, VitalReading } from '../../services/vitals.service';
 import { VitalType } from '../../services/types';
-import { Colors, Brand, Fonts, FontSize, Spacing, BorderRadius } from '../../theme';
+import { NeoSeniorAppStackParamList } from '../../navigation/types';
+import { Brand, Fonts, FontSize } from '../../theme';
+import Logo from '../../components/Logo';
 
-const VITAL_UNIT: Record<VitalType, string> = {
-  bp_systolic: 'mmHg',
-  bp_diastolic: 'mmHg',
-  pulse_rate: 'bpm',
-  blood_sugar_mmol: 'mmol/L',
-  spo2_pct: '%',
-  heart_rate_bpm: 'bpm',
-  weight_kg: 'kg',
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type SeverityStatus = 'Normal' | 'Watch' | 'Alert';
+type FilterTimeframe = 'All' | 'This Week' | 'This Month';
+
+interface DayRecord {
+  id: string;
+  dateString: string;
+  severity: SeverityStatus;
+  bloodPressure: string;
+  sugarLevel: string;
+  moodSummary: string;
+  medsCompliance: 'Taken' | '–';
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MON_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function formatDateLong(dateStr: string): string {
+  // Append T00:00:00 so the date is parsed as local time, not UTC midnight.
+  const d = new Date(`${dateStr}T00:00:00`);
+  return `${DAY_NAMES[d.getDay()]}, ${d.getDate()} ${MON_SHORT[d.getMonth()]}`;
+}
+
+const SEVERITY_RANK: Record<SeverityStatus, number> = { Normal: 0, Watch: 1, Alert: 2 };
+
+function tierToSeverity(tier: EscalationTier): SeverityStatus {
+  if (tier === 'urgent') return 'Alert';
+  if (tier === 'warning' || tier === 'info') return 'Watch';
+  return 'Normal';
+}
+
+function latestVital(vitals: VitalReading[], type: VitalType): VitalReading | undefined {
+  return vitals
+    .filter((v) => v.vitalType === type)
+    .sort((a, b) => new Date(b.loggedAt).getTime() - new Date(a.loggedAt).getTime())[0];
+}
+
+function buildDayRecords(logs: HealthLogSummary[], vitals: VitalReading[]): DayRecord[] {
+  const byDate = new Map<string, { logs: HealthLogSummary[]; vitals: VitalReading[] }>();
+
+  for (const log of logs) {
+    const key = new Date(log.loggedAt).toISOString().split('T')[0];
+    if (!byDate.has(key)) byDate.set(key, { logs: [], vitals: [] });
+    byDate.get(key)!.logs.push(log);
+  }
+  for (const v of vitals) {
+    const key = new Date(v.loggedAt).toISOString().split('T')[0];
+    if (!byDate.has(key)) byDate.set(key, { logs: [], vitals: [] });
+    byDate.get(key)!.vitals.push(v);
+  }
+
+  return Array.from(byDate.entries())
+    .sort(([a], [b]) => (a < b ? 1 : -1))
+    .map(([dateKey, { logs: dl, vitals: dv }]) => {
+      // Highest severity across all logs for this day
+      let sev: SeverityStatus = 'Normal';
+      for (const l of dl) {
+        const s = tierToSeverity(l.escalationTier);
+        if (SEVERITY_RANK[s] > SEVERITY_RANK[sev]) sev = s;
+      }
+
+      // Blood pressure
+      const sys = latestVital(dv, 'bp_systolic');
+      const dia = latestVital(dv, 'bp_diastolic');
+      const bp = sys && dia ? `${Math.round(sys.value)}/${Math.round(dia.value)}` : '–/–';
+
+      // Blood sugar
+      const sugar = latestVital(dv, 'blood_sugar_mmol');
+      const sugarStr = sugar ? `${sugar.value.toFixed(1)} mmol/L` : '–';
+
+      // Mood: first symptom log aiSummary, truncated
+      const symptom = dl.find((l) => l.logType === 'symptom');
+      const mood = symptom
+        ? symptom.aiSummary.length > 22
+          ? `${symptom.aiSummary.slice(0, 21)}…`
+          : symptom.aiSummary
+        : '–';
+
+      // Medication compliance
+      const meds: DayRecord['medsCompliance'] = dl.some((l) => l.logType === 'medication')
+        ? 'Taken'
+        : '–';
+
+      return {
+        id: dateKey,
+        dateString: formatDateLong(dateKey),
+        severity: sev,
+        bloodPressure: bp,
+        sugarLevel: sugarStr,
+        moodSummary: mood,
+        medsCompliance: meds,
+      };
+    });
+}
+
+function isInTimeframe(dateStr: string, filter: FilterTimeframe): boolean {
+  if (filter === 'All') return true;
+  const date = new Date(`${dateStr}T00:00:00`);
+  const now = new Date();
+  if (filter === 'This Week') {
+    return date >= new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  }
+  if (filter === 'This Month') {
+    return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
+  }
+  return true;
+}
+
+// ─── Badge colors ─────────────────────────────────────────────────────────────
+
+const BADGE_BG: Record<SeverityStatus, string> = {
+  Normal: '#00BFA5',
+  Watch: '#F9A825',
+  Alert: '#EF5350',
 };
 
-function tierColor(tier: string) {
-  if (tier === 'urgent') return Colors.error;
-  if (tier === 'warning') return Colors.warning;
-  return Colors.success;
-}
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function NeoSeniorMyHealthScreen() {
-  const { t } = useTranslation();
-  const qc = useQueryClient();
-  const navigation = useNavigation<NativeStackNavigationProp<NeoSeniorAppStackParamList>>();
+  const insets = useSafeAreaInsets();
   const userId = useAuthStore((s) => s.user?.id ?? '');
-  const enabled = !!userId;
+  const displayName = useAuthStore((s) => s.user?.displayName ?? '');
+  const navigation = useNavigation<NativeStackNavigationProp<NeoSeniorAppStackParamList>>();
 
-  const summaryQ = useQuery({ queryKey: ['vitalsSummary', userId], queryFn: () => getVitalsSummary(userId), enabled });
-  const trendQ = useQuery({ queryKey: ['vitalsTrend', userId], queryFn: () => getVitalsTrend(userId), enabled });
-  const medsQ = useQuery({ queryKey: ['medications', userId], queryFn: () => getMedications(userId), enabled });
-  const draftsQ = useQuery({ queryKey: ['medDrafts', userId], queryFn: () => getMedicationDrafts(userId), enabled });
-  const adherenceQ = useQuery({ queryKey: ['adherence', userId], queryFn: () => getAdherence(userId), enabled });
-  const logsQ = useQuery({ queryKey: ['healthLogs', userId], queryFn: () => getHealthLogs(userId, { limit: 6 }), enabled });
+  const [filter, setFilter] = useState<FilterTimeframe>('All');
 
-  const confirmMut = useMutation({
-    mutationFn: (vars: { confirm: string[]; discard: string[] }) => confirmDrafts(userId, vars),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['medDrafts', userId] });
-      qc.invalidateQueries({ queryKey: ['medications', userId] });
-    },
+  const logsQ = useQuery({
+    queryKey: ['healthLogs', userId, 'history'],
+    queryFn: () => getHealthLogs(userId, { limit: 100 }),
+    enabled: !!userId,
   });
 
-  const summary = summaryQ.data?.summary ?? [];
-  const trend = trendQ.data?.trend ?? {};
-  const meds = medsQ.data ?? [];
-  const drafts = draftsQ.data ?? [];
-  const adherence = adherenceQ.data?.adherence ?? [];
-  const logs = logsQ.data?.logs ?? [];
+  const vitalsQ = useQuery({
+    queryKey: ['vitals', userId, 'history'],
+    queryFn: () => getVitals(userId, { limit: 200 }),
+    enabled: !!userId,
+  });
 
-  const refreshing = summaryQ.isRefetching || medsQ.isRefetching || logsQ.isRefetching;
-  const refetchAll = () => {
-    summaryQ.refetch();
-    trendQ.refetch();
-    medsQ.refetch();
-    draftsQ.refetch();
-    adherenceQ.refetch();
-    logsQ.refetch();
-  };
+  const isLoading = logsQ.isLoading && vitalsQ.isLoading;
+  const isRefreshing = logsQ.isRefetching || vitalsQ.isRefetching;
 
-  return (
-    <Screen
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refetchAll} tintColor={Brand.primary} />}
-    >
-      <Text style={styles.h1}>{t('myHealth.title')}</Text>
-      <Text style={styles.subtitle}>{t('myHealth.subtitle')}</Text>
-
-      {/* Recent activity */}
-      <Text style={styles.sectionLabel}>{t('myHealth.activityTitle')}</Text>
-      {logsQ.isLoading ? (
-        <Loading />
-      ) : logs.length === 0 ? (
-        <Empty text={t('myHealth.noActivity')} />
-      ) : (
-        <View style={styles.activityCard}>
-          {logs.map((log: HealthLogSummary, i) => (
-            <Pressable
-              key={log.id}
-              onPress={() => navigation.navigate('HealthLogEntry', { logId: log.id })}
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.logRow, i > 0 && styles.logDivider, pressed && styles.rowPressed]}
-            >
-              <View style={[styles.tierDot, { backgroundColor: tierColor(log.escalationTier) }]} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.logSummary}>{log.aiSummary}</Text>
-                <Text style={styles.logTime}>{new Date(log.loggedAt).toLocaleString()}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="#c2ccce" />
-            </Pressable>
-          ))}
-        </View>
-      )}
-
-      {/* Readings */}
-      <Text style={styles.sectionLabel}>{t('myHealth.readingsTitle')}</Text>
-      {summaryQ.isLoading ? (
-        <Loading />
-      ) : summary.length === 0 ? (
-        <Empty text={t('myHealth.noReadings')} />
-      ) : (
-        summary.map((row: VitalSummaryRow) => {
-          const series = (trend[row.vitalType] ?? []).map((p) => p.value);
-          const outOfRange = row.outOfRange > 0;
-          return (
-            <View key={row.vitalType} style={styles.vitalCard}>
-              <View style={styles.vitalCardInner}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.vitalName}>{t(`myHealth.vital_${row.vitalType}`)}</Text>
-                  <View style={styles.vitalValueRow}>
-                    <Text style={styles.vitalValue}>
-                      {row.avg.toFixed(row.vitalType === 'blood_sugar_mmol' ? 1 : 0)}
-                    </Text>
-                    <Text style={styles.vitalUnit}>
-                      {VITAL_UNIT[row.vitalType]} · {t('myHealth.avg')}
-                    </Text>
-                  </View>
-                </View>
-                <Sparkline data={series} color={outOfRange ? Colors.error : Brand.primary} />
-              </View>
-              {outOfRange && (
-                <View style={styles.outOfRangeRow}>
-                  <Ionicons name="warning" size={19} color={Colors.error} />
-                  <Text style={styles.outOfRangeText}>
-                    {t('myHealth.outOfRange', { count: row.outOfRange })}
-                  </Text>
-                </View>
-              )}
-            </View>
-          );
-        })
-      )}
-
-      {/* Medicines */}
-      <Text style={styles.sectionLabel}>{t('myHealth.medsTitle')}</Text>
-
-      {drafts.length > 0 && (
-        <View style={styles.draftsBanner}>
-          <Ionicons name="document-text-outline" size={22} color="#9a5b14" />
-          <Text style={styles.draftsText}>{t('myHealth.draftsBanner', { count: drafts.length })}</Text>
-        </View>
-      )}
-
-      {drafts.map((d: MedicationDraft) => (
-        <View key={d.id} style={styles.draftCard}>
-          <View style={styles.draftCardTop}>
-            <View style={styles.pillIconTile}>
-              <Ionicons name="medical" size={24} color={Brand.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.medName}>{d.name}</Text>
-              {!!(d.dosage || d.frequency) && (
-                <Text style={styles.medMeta}>
-                  {[d.dosage, d.frequency].filter(Boolean).join(' · ')}
-                </Text>
-              )}
-              <View style={styles.prescriptionBadge}>
-                <Text style={styles.prescriptionBadgeText}>From prescription scan</Text>
-              </View>
-            </View>
-          </View>
-          <View style={styles.draftActions}>
-            <Pressable
-              style={styles.declineBtn}
-              onPress={() => confirmMut.mutate({ confirm: [], discard: [d.id] })}
-              disabled={confirmMut.isPending}
-              accessibilityRole="button"
-            >
-              <Text style={styles.declineBtnText}>{t('neoSeniorOnboarding.reject')}</Text>
-            </Pressable>
-            <Pressable
-              style={styles.addBtn}
-              onPress={() => confirmMut.mutate({ confirm: [d.id], discard: [] })}
-              disabled={confirmMut.isPending}
-              accessibilityRole="button"
-            >
-              <Text style={styles.addBtnText}>{t('common.complete')}</Text>
-            </Pressable>
-          </View>
-        </View>
-      ))}
-
-      {medsQ.isLoading ? (
-        <Loading />
-      ) : meds.length === 0 && drafts.length === 0 ? (
-        <Empty text={t('myHealth.noMeds')} />
-      ) : (
-        meds.map((m: Medication) => {
-          const adh = adherence.find((a) => a.id === m.id);
-          return (
-            <View key={m.id} style={styles.medCard}>
-              <View style={styles.medIconTile}>
-                <Ionicons name="medical" size={24} color="#1f6b4f" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.medName}>{m.name}</Text>
-                {!!(m.dosage || m.frequency) && (
-                  <Text style={styles.medMeta}>
-                    {[m.dosage, m.frequency, m.scheduledTimes?.join(', ')].filter(Boolean).join(' · ')}
-                  </Text>
-                )}
-                {adh && (
-                  <View style={styles.adherenceWrap}>
-                    <View style={styles.adherenceHeader}>
-                      <Text style={styles.adherenceLabel}>Last 30 days</Text>
-                      <Text style={styles.adherenceLabel}>
-                        {adh.taken} taken · {adh.missed} missed
-                      </Text>
-                    </View>
-                    <View style={styles.adherenceBar}>
-                      <View style={[styles.adherenceSegment, { flex: adh.taken, backgroundColor: Colors.success }]} />
-                      <View style={[styles.adherenceSegment, { flex: adh.missed, backgroundColor: '#f0d6cf' }]} />
-                    </View>
-                  </View>
-                )}
-              </View>
-            </View>
-          );
-        })
-      )}
-    </Screen>
+  const allRecords = useMemo(
+    () => buildDayRecords(logsQ.data?.logs ?? [], vitalsQ.data?.vitals ?? []),
+    [logsQ.data, vitalsQ.data],
   );
-}
+  const records = useMemo(
+    () => allRecords.filter((r) => isInTimeframe(r.id, filter)),
+    [allRecords, filter],
+  );
 
-function Loading() {
-  return <ActivityIndicator color={Brand.primary} style={{ marginVertical: Spacing.lg }} />;
-}
-function Empty({ text }: { text: string }) {
+  // Avatar
+  const initials = displayName
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join('');
+  const shortName = displayName.trim();
+
+  const ListHeader = (
+    <>
+      <View style={styles.headingBlock}>
+        <Text style={styles.heading}>Monitoring Log</Text>
+      </View>
+      <View style={styles.filterRow}>
+        {(['All', 'This Week', 'This Month'] as FilterTimeframe[]).map((f) => (
+          <Pressable
+            key={f}
+            onPress={() => setFilter(f)}
+            style={[styles.chip, f === filter && styles.chipActive]}
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+            accessibilityRole="button"
+            accessibilityState={{ selected: f === filter }}
+          >
+            <Text style={[styles.chipText, f === filter && styles.chipTextActive]}>{f}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </>
+  );
+
   return (
-    <View style={styles.emptyCard}>
-      <Text style={styles.emptyText}>{text}</Text>
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
+
+      {/* A. Global header */}
+      <View style={styles.header}>
+        <Logo />
+        <View style={styles.userCluster}>
+          {shortName ? (
+            <Text style={styles.userName} numberOfLines={1}>{shortName}</Text>
+          ) : null}
+          <View style={styles.avatarCircle}>
+            <Text style={styles.avatarInitials}>{initials || '?'}</Text>
+          </View>
+        </View>
+      </View>
+
+      {isLoading ? (
+        <View style={styles.loadingBox}>
+          <ActivityIndicator size="large" color={Brand.primary} />
+        </View>
+      ) : (
+        // D. FlatList — header contains B + C
+        <FlatList<DayRecord>
+          data={records}
+          keyExtractor={(item) => item.id}
+          ListHeaderComponent={ListHeader}
+          renderItem={({ item }) => (
+            <Pressable
+              style={({ pressed }) => [styles.card, pressed && { opacity: 0.85 }]}
+              onPress={() => navigation.navigate('MonitoringLogDetail', { date: item.id })}
+              accessibilityRole="button"
+              accessibilityLabel={`View details for ${item.dateString}`}
+            >
+              {/* Card header row */}
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardDate}>{item.dateString}</Text>
+                <View style={[styles.badge, { backgroundColor: BADGE_BG[item.severity] }]}>
+                  <Text style={styles.badgeText}>{item.severity}</Text>
+                </View>
+              </View>
+
+              {/* Metrics data grid */}
+              <View style={styles.metricsGrid}>
+                {/* Left column */}
+                <View style={styles.metricCol}>
+                  <View style={[styles.metricRow, styles.metricRowGap]}>
+                    <Text style={styles.metricLabel}>BP: </Text>
+                    <Text style={styles.metricValue}>{item.bloodPressure}</Text>
+                  </View>
+                  <View style={styles.metricRow}>
+                    <Text style={styles.metricLabel}>Sugar: </Text>
+                    <Text style={styles.metricValue}>{item.sugarLevel}</Text>
+                  </View>
+                </View>
+                {/* Right column */}
+                <View style={styles.metricCol}>
+                  <View style={[styles.metricRow, styles.metricRowGap]}>
+                    <Text style={styles.metricLabel}>Mood: </Text>
+                    <Text style={styles.metricValue} numberOfLines={1}>{item.moodSummary}</Text>
+                  </View>
+                  <View style={styles.metricRow}>
+                    <Text style={styles.metricLabel}>Meds: </Text>
+                    <Text style={[
+                      styles.metricValue,
+                      item.medsCompliance === 'Taken' && styles.medsTaken,
+                    ]}>
+                      {item.medsCompliance}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </Pressable>
+          )}
+          ListEmptyComponent={
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyText}>No records for this period</Text>
+            </View>
+          }
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={() => { logsQ.refetch(); vitalsQ.refetch(); }}
+              tintColor={Brand.primary}
+            />
+          }
+        />
+      )}
     </View>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  content: { padding: Spacing.xl, paddingBottom: Spacing['4xl'] },
+  root: { flex: 1, backgroundColor: '#FBFBFA' },
 
-  h1: {
-    fontFamily: Fonts.heading,
-    fontSize: FontSize['3xl'],
-    color: Brand.primary,
-    marginTop: 6,
-    marginBottom: 0,
-  },
-  subtitle: {
-    fontFamily: Fonts.body,
-    fontSize: FontSize.lg,
-    lineHeight: 27,
-    color: Brand.mutedTeal,
-    marginBottom: 24,
-  },
-
-  sectionLabel: {
-    fontFamily: Fonts.heading,
-    fontSize: FontSize.lg,
-    color: Brand.primaryForm,
-    marginTop: 28,
-    marginBottom: 12,
-  },
-
-  // Activity card
-  activityCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: Brand.borderWarm,
-    overflow: 'hidden',
-    marginBottom: 0,
-  },
-  logRow: {
+  // A. Global header
+  header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    padding: 16,
-  },
-  logDivider: { borderTopWidth: 1, borderTopColor: '#f3ead6' },
-  rowPressed: { opacity: 0.6 },
-  tierDot: { width: 12, height: 12, borderRadius: 6, marginTop: 5 },
-  logSummary: {
-    fontFamily: Fonts.body,
-    fontSize: FontSize.lg,
-    lineHeight: 26,
-    color: Brand.bodyText,
-  },
-  logTime: {
-    fontFamily: Fonts.bodyMedium,
-    fontSize: FontSize.sm,
-    color: Brand.mutedTeal,
-    marginTop: 3,
-  },
-
-  // Vital cards
-  vitalCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: Brand.borderWarm,
-    padding: 18,
-    marginBottom: 14,
-    shadowColor: Brand.primary,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
-  },
-  vitalCardInner: {
-    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 16,
+    paddingHorizontal: 20,
+    height: 64,
+    backgroundColor: '#F5F1E5',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#EFEBE4',
   },
-  vitalName: {
+  userCluster: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  userName: {
     fontFamily: Fonts.heading,
     fontSize: 16,
-    color: Brand.mutedTeal,
-  },
-  vitalValueRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 6,
-    marginTop: 2,
-  },
-  vitalValue: {
-    fontFamily: Fonts.heading,
-    fontSize: 38,
-    lineHeight: 40,
+    fontWeight: '600',
     color: Brand.primary,
+    maxWidth: 120,
   },
-  vitalUnit: {
-    fontFamily: Fonts.bodyMedium,
-    fontSize: FontSize.sm,
-    color: Brand.mutedTeal,
-  },
-  outOfRangeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#f3ead6',
-  },
-  outOfRangeText: {
-    fontFamily: Fonts.bodySemiBold,
-    fontSize: 15,
-    color: Colors.error,
-  },
-
-  // Drafts
-  draftsBanner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    backgroundColor: '#f6e9c9',
-    borderWidth: 1,
-    borderColor: '#efd9a7',
-    borderRadius: 16,
-    padding: 14,
-    paddingHorizontal: 16,
-    marginBottom: 14,
-  },
-  draftsText: {
-    fontFamily: Fonts.bodyMedium,
-    fontSize: 16,
-    lineHeight: 22,
-    color: '#7a6230',
-    flex: 1,
-  },
-  draftCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: '#efd9a7',
-    padding: 18,
-    marginBottom: 14,
-    shadowColor: Brand.primary,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
-  },
-  draftCardTop: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 14,
-    alignItems: 'flex-start',
-  },
-  pillIconTile: {
-    width: 46,
-    height: 46,
-    borderRadius: 13,
+  avatarCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: Brand.accentPeach,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  prescriptionBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#fdf0e1',
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    marginTop: 8,
-  },
-  prescriptionBadgeText: {
-    fontFamily: Fonts.bodyMedium,
-    fontSize: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    color: '#9a5b14',
-  },
-  draftActions: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  declineBtn: {
-    flex: 1,
-    height: 52,
-    borderWidth: 2,
-    borderColor: Brand.primary,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  declineBtnText: {
+  avatarInitials: { fontFamily: Fonts.heading, fontSize: 13, color: Brand.primary },
+
+  loadingBox: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+
+  listContent: { paddingHorizontal: 20, paddingBottom: 100 },
+
+  // B. Screen heading
+  headingBlock: { paddingTop: 24, marginBottom: 20 },
+  heading: {
     fontFamily: Fonts.heading,
-    fontSize: 16,
+    fontSize: 24,
+    fontWeight: '700',
     color: Brand.primary,
-  },
-  addBtn: {
-    flex: 1,
-    height: 52,
-    backgroundColor: Brand.primaryForm,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addBtnText: {
-    fontFamily: Fonts.heading,
-    fontSize: 16,
-    color: '#fff',
   },
 
-  // Confirmed meds
-  medCard: {
+  // C. Filter row
+  filterRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
     gap: 12,
-    backgroundColor: Colors.surface,
-    borderRadius: 18,
+    marginBottom: 20,
+  },
+  chip: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: Brand.borderWarm,
-    padding: 18,
-    marginBottom: 14,
-    shadowColor: Brand.primary,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
+    borderColor: '#FFE6D5',
   },
-  medIconTile: {
-    width: 46,
-    height: 46,
-    borderRadius: 13,
-    backgroundColor: '#e6f0ec',
-    alignItems: 'center',
-    justifyContent: 'center',
+  chipActive: {
+    backgroundColor: Brand.primary,
+    borderColor: Brand.primary,
   },
-  medName: {
-    fontFamily: Fonts.heading,
-    fontSize: 19,
+  chipText: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: FontSize.sm,
+    fontWeight: '500',
     color: Brand.primary,
   },
-  medMeta: {
-    fontFamily: Fonts.body,
-    fontSize: 16,
-    color: Brand.bodyText,
-    marginTop: 2,
+  chipTextActive: {
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
-  adherenceWrap: { marginTop: 12 },
-  adherenceHeader: {
+
+  // D. Log card
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#FFE6D5',
+    padding: 16,
+    marginBottom: 16,
+  },
+  cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    alignItems: 'center',
+    marginBottom: 16,
   },
-  adherenceLabel: {
-    fontFamily: Fonts.bodyMedium,
+  cardDate: {
+    fontFamily: Fonts.heading,
+    fontSize: 16,
+    fontWeight: '700',
+    color: Brand.primary,
+  },
+  badge: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  badgeText: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+
+  // Metrics grid
+  metricsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  metricCol: { width: '48%' },
+  metricRow: { flexDirection: 'row', alignItems: 'center' },
+  metricRowGap: { marginBottom: 8 },
+  metricLabel: {
+    fontFamily: Fonts.body,
     fontSize: FontSize.sm,
     color: Brand.mutedTeal,
   },
-  adherenceBar: {
-    flexDirection: 'row',
-    gap: 3,
-    height: 10,
+  metricValue: {
+    fontFamily: Fonts.heading,
+    fontSize: FontSize.sm,
+    fontWeight: '700',
+    color: Brand.primary,
+    flexShrink: 1,
   },
-  adherenceSegment: {
-    borderRadius: 5,
-  },
+  medsTaken: { color: '#00BFA5' },
 
-  emptyCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: Brand.borderWarm,
-    padding: Spacing.lg,
-  },
+  emptyBox: { alignItems: 'center', marginTop: 40 },
   emptyText: {
     fontFamily: Fonts.body,
     fontSize: FontSize.base,
-    color: Colors.textMuted,
-    lineHeight: 22,
+    color: Brand.mutedTeal,
   },
 });

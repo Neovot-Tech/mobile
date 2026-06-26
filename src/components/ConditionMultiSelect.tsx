@@ -13,7 +13,7 @@ export const CONDITION_OPTIONS = [
 export type Condition = (typeof CONDITION_OPTIONS)[number];
 
 interface ConditionMultiSelectProps {
-  label: string;
+  label?: string;
   hint?: string;
   selected: string[];
   onChange: (selected: string[]) => void;
@@ -38,7 +38,7 @@ export default function ConditionMultiSelect({
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.label}>{label}</Text>
+      {label ? <Text style={styles.label}>{label}</Text> : null}
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}
       <View style={styles.list}>
         {CONDITION_OPTIONS.map((key) => {

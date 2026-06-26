@@ -9,6 +9,7 @@ interface NeoCareProfile {
 interface NeoSeniorProfile {
   fullName: string;
   phone: string;
+  address?: string;
   dateOfBirth?: string;
   conditions: string[];
   preferredLang: string;

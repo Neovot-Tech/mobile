@@ -30,12 +30,20 @@ type RouteProps = RouteProp<NeoCareAppStackParamList, 'MonitoringLogDetail'>;
 
 // ─── Safe extractedEntities access ───────────────────────────────────────────
 
-function extractString(ee: Record<string, unknown> | undefined, ...keys: string[]): string {
+function extractBp(ee: Record<string, unknown> | undefined): string {
   if (!ee) return '—';
-  for (const key of keys) {
-    if (typeof ee[key] === 'string' && (ee[key] as string).trim()) {
-      return ee[key] as string;
-    }
+  const sys = ee.bp_systolic;
+  const dia = ee.bp_diastolic;
+  if (typeof sys === 'number' && typeof dia === 'number') return `${sys}/${dia}`;
+  return '—';
+}
+
+function extractSugar(ee: Record<string, unknown> | undefined): string {
+  if (!ee) return '—';
+  for (const key of ['blood_sugar_mmol', 'blood_sugar_mgdl', 'blood_sugar_mmol_approx']) {
+    const val = ee[key];
+    if (typeof val === 'number') return String(val);
+    if (typeof val === 'string' && val.trim()) return val.trim();
   }
   return '—';
 }
@@ -116,8 +124,8 @@ export default function DetailedMonitoringLogScreen() {
   const meds = medsQ.data ?? [];
 
   const ee = entry?.extractedEntities ?? {};
-  const bp = extractString(ee, 'blood_pressure', 'bp', 'systolic_diastolic');
-  const sugar = extractString(ee, 'blood_sugar', 'sugar', 'blood_sugar_mmol');
+  const bp = extractBp(ee);
+  const sugar = extractSugar(ee);
   const symptoms = extractSymptoms(ee);
 
   const adherencePct = useMemo(() => {

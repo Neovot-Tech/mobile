@@ -24,6 +24,9 @@ export type NeoCareOnboardingStackParamList = {
 
 // NeoSenior onboarding stack
 export type NeoSeniorOnboardingStackParamList = {
+  NeoSeniorStep1: undefined;
+  NeoSeniorStep2: undefined;
+  NeoSeniorReview: undefined;
   NeoSeniorActivate: undefined;
   NeoSeniorConfirmLink: undefined;
   NeoSeniorSelfReg: undefined;
@@ -51,6 +54,7 @@ export type NeoCareTabParamList = {
 export type NeoSeniorAppStackParamList = {
   Tabs: NavigatorScreenParams<NeoSeniorTabParamList>;
   HealthLogEntry: { logId: string };
+  MonitoringLogDetail: { date: string };
   VitalTrend: { userId: string; vitalType: VitalType };
   MedicationEdit: { userId: string; medId?: string };
   EditProfile: { nsrId: string };

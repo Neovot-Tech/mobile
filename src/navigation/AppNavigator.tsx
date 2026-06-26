@@ -6,6 +6,7 @@ import NeoCareTabNavigator from './NeoCareTabNavigator';
 import HealthLogEntryScreen from '../screens/shared/HealthLogEntryScreen';
 import EditProfileScreen from '../screens/shared/EditProfileScreen';
 import CaregiverRequestsScreen from '../screens/neosenior/CaregiverRequestsScreen';
+import NeoSeniorMonitoringLogDetailScreen from '../screens/neosenior/NeoSeniorMonitoringLogDetailScreen';
 import AddSeniorScreen from '../screens/neocare/AddSeniorScreen';
 import AwaitingConfirmationScreen from '../screens/neocare/AwaitingConfirmationScreen';
 import AccountConfirmedScreen from '../screens/neocare/AccountConfirmedScreen';
@@ -24,6 +25,7 @@ export function NeoSeniorAppNavigator() {
     <NeoSeniorStack.Navigator screenOptions={{ headerShown: false }}>
       <NeoSeniorStack.Screen name="Tabs" component={NeoSeniorTabNavigator} />
       <NeoSeniorStack.Screen name="HealthLogEntry" component={HealthLogEntryScreen} />
+      <NeoSeniorStack.Screen name="MonitoringLogDetail" component={NeoSeniorMonitoringLogDetailScreen} />
       <NeoSeniorStack.Screen name="EditProfile" component={EditProfileScreen} />
       <NeoSeniorStack.Screen name="CaregiverRequests" component={CaregiverRequestsScreen} />
     </NeoSeniorStack.Navigator>

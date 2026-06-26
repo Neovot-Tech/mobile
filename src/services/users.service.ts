@@ -32,12 +32,14 @@ export async function getMyProfile(): Promise<{
   phone: string | null;
 }> {
   const { data } = await http.get<{
-    user: { full_name: string | null; address?: string | null; phone?: string | null };
-  }>(Endpoints.users.data);
+    full_name: string | null;
+    address?: string | null;
+    phone_number?: string | null;
+  }>(Endpoints.users.me);
   return {
-    fullName: data.user.full_name,
-    address: data.user.address ?? null,
-    phone: data.user.phone ?? null,
+    fullName: data.full_name,
+    address: data.address ?? null,
+    phone: data.phone_number ?? null,
   };
 }
 

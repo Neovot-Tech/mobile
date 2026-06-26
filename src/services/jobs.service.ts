@@ -4,7 +4,15 @@ import { Platform } from 'react-native';
 import { File, UploadType } from 'expo-file-system';
 import { http } from './http';
 import { Endpoints } from '../constants/api';
-import { JobType, JobStatus, ManualCategory, PreferredLang } from './types';
+import {
+  JobType,
+  JobStatus,
+  ManualCategory,
+  PreferredLang,
+  TriageFollowup,
+  TriageAnswer,
+  TriageResponse,
+} from './types';
 
 export interface SignedUrlResult {
   signedUrl: string;
@@ -30,6 +38,7 @@ export interface Job {
   errorMessage?: string;
   queuedAt?: string;
   completedAt?: string;
+  triageFollowup?: TriageFollowup;
 }
 
 interface JobDto {
@@ -40,6 +49,12 @@ interface JobDto {
   error_message?: string | null;
   queued_at?: string | null;
   completed_at?: string | null;
+  triage_followup?: {
+    id: string;
+    status: string;
+    territories: string[];
+    questions: Array<{ question: string; options: string[] }>;
+  } | null;
 }
 
 /**
@@ -58,6 +73,15 @@ function normalizeStatus(raw: string, resultLogId?: string | null, errorMessage?
 }
 
 function toJob(j: JobDto): Job {
+  let triageFollowup: TriageFollowup | undefined;
+  if (j.triage_followup) {
+    triageFollowup = {
+      id: j.triage_followup.id,
+      status: j.triage_followup.status as TriageFollowup['status'],
+      territories: j.triage_followup.territories,
+      questions: j.triage_followup.questions,
+    };
+  }
   return {
     jobId: j.job_id,
     status: normalizeStatus(j.status, j.result_log_id, j.error_message),
@@ -66,6 +90,7 @@ function toJob(j: JobDto): Job {
     errorMessage: j.error_message ?? undefined,
     queuedAt: j.queued_at ?? undefined,
     completedAt: j.completed_at ?? undefined,
+    triageFollowup,
   };
 }
 
@@ -159,4 +184,16 @@ export async function submitJob(params: SubmitJobParams): Promise<Job> {
 export async function getJobStatus(jobId: string): Promise<Job> {
   const { data } = await http.get<JobDto>(Endpoints.jobs.status(jobId));
   return toJob(data);
+}
+
+/** Step 6: submit answers to triage follow-up questions. */
+export async function submitTriageResponse(
+  jobId: string,
+  answers: TriageAnswer[],
+): Promise<TriageResponse> {
+  const { data } = await http.post<{ tier: string; reason: string; upgraded: boolean }>(
+    Endpoints.jobs.triageResponse(jobId),
+    { answers },
+  );
+  return { tier: data.tier, reason: data.reason, upgraded: data.upgraded };
 }

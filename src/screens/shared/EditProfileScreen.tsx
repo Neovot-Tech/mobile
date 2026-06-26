@@ -7,14 +7,15 @@ import {
   Switch,
   ActivityIndicator,
   StyleSheet,
+  ScrollView,
+  StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 
-import Screen from '../../components/Screen';
-import BackHeader from '../../components/BackHeader';
 import DateInput from '../../components/DateInput';
 import ConditionMultiSelect from '../../components/ConditionMultiSelect';
 import {
@@ -29,6 +30,13 @@ import { getApiErrorMessage } from '../../services/http';
 import { NsrCode, PreferredLang } from '../../services/types';
 import { useAuthStore } from '../../store/auth.store';
 import { Brand, Colors, Fonts, FontSize, Spacing, BorderRadius, MinTapTarget } from '../../theme';
+
+// ─── Design tokens ────────────────────────────────────────────────────────────
+
+const CARD_BORDER = '#FFE6D5';
+const ROW_DIVIDER = '#EFEBE4';
+const INPUT_BG = '#FFF6E6';
+const INPUT_BORDER = '#FFE6D5';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -72,6 +80,15 @@ const EMPTY_FORM: FormState = {
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join('');
+}
 
 function authSeedForm(displayName: string, phone: string, lang: PreferredLang): FormState {
   return { ...EMPTY_FORM, fullName: displayName, phone, lang };
@@ -141,14 +158,16 @@ function formToRequest(f: FormState): UpdateNeoSeniorProfileRequest {
 
 export default function EditProfileScreen() {
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const { nsrId } = useRoute<RouteProp<{ EditProfile: Params }, 'EditProfile'>>().params;
   const navigation = useNavigation();
 
   const authUser = useAuthStore(s => s.user);
   const isNeoSenior = authUser?.role === 'neo_senior';
+  const displayName = authUser?.displayName ?? '';
 
   const [form, setForm] = useState<FormState>(() =>
-    authSeedForm(authUser?.displayName ?? '', authUser?.phone ?? '', authUser?.language ?? 'en'),
+    authSeedForm(displayName, authUser?.phone ?? '', authUser?.language ?? 'en'),
   );
   const [initialized, setInitialized] = useState(false);
   const [newAllergy, setNewAllergy] = useState('');
@@ -201,289 +220,343 @@ export default function EditProfileScreen() {
   }
 
   return (
-    <Screen contentContainerStyle={styles.content}>
-      <BackHeader title={t('editProfile.title')} bordered />
-      {profileQ.isLoading && (
-        <ActivityIndicator color={Brand.primary} style={styles.loadingIndicator} />
-      )}
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
 
-      {/* ── Section 1: Basic Info ─────────────────────────────────────── */}
-      <SectionHeader number={1} label={t('editProfile.sectionBasic')} />
-
-      <FieldLabel label={t('onboarding.fullName')} />
-      <TextInput
-        style={styles.input}
-        value={form.fullName}
-        onChangeText={v => upd('fullName', v)}
-        placeholderTextColor={Colors.textMuted}
-      />
-
-      <FieldLabel label={t('onboarding.phone')} />
-      <TextInput
-        style={styles.input}
-        value={form.phone}
-        onChangeText={v => upd('phone', v)}
-        keyboardType="phone-pad"
-        placeholderTextColor={Colors.textMuted}
-      />
-
-      <DateInput
-        label={t('onboarding.dateOfBirth')}
-        value={form.dob}
-        onChange={v => upd('dob', v)}
-      />
-
-      <FieldLabel label={t('onboarding.language')} />
-      <View style={styles.langRow}>
-        {(['en', 'tw'] as PreferredLang[]).map(l => (
-          <Pressable
-            key={l}
-            onPress={() => upd('lang', l)}
-            style={[styles.langChip, form.lang === l && styles.langChipActive]}
-            accessibilityRole="button"
-            accessibilityState={{ selected: form.lang === l }}
-          >
-            <Text style={[styles.langChipText, form.lang === l && styles.langChipTextActive]}>
-              {l === 'en' ? 'English' : 'Twi'}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      <ConditionMultiSelect
-        label={t('onboarding.conditions')}
-        hint={t('onboarding.conditionsHint')}
-        selected={form.conditions}
-        onChange={v => upd('conditions', v)}
-      />
-
-      {/* ── Section 2: Alert Thresholds (warm panel) ─────────────────── */}
-      <View style={styles.thresholdsPanel}>
-        <SectionHeader number={2} label={t('editProfile.sectionThresholds')} accent />
-        <Text style={styles.thresholdsHint}>{t('onboarding.thresholdsHint')}</Text>
-        <View style={styles.thresholdGrid}>
-          <ThresholdGridField
-            label={t('editProfile.bpHighThreshold')}
-            value={form.bpHigh}
-            onChange={v => upd('bpHigh', v)}
-          />
-          <ThresholdGridField
-            label={t('editProfile.sugarHighMmol')}
-            value={form.sugarHigh}
-            onChange={v => upd('sugarHigh', v)}
-          />
-          <ThresholdGridField
-            label={t('editProfile.spo2LowThreshold')}
-            value={form.spo2Low}
-            onChange={v => upd('spo2Low', v)}
-          />
-          <ThresholdGridField
-            label={t('editProfile.heartRateHigh')}
-            value={form.hrHigh}
-            onChange={v => upd('hrHigh', v)}
-          />
-          <ThresholdGridField
-            label={t('editProfile.heartRateLow')}
-            value={form.hrLow}
-            onChange={v => upd('hrLow', v)}
-          />
-          <ThresholdGridField
-            label={t('editProfile.weightAlertDelta')}
-            value={form.weightDelta}
-            onChange={v => upd('weightDelta', v)}
-          />
+      {/* Header */}
+      <View style={styles.header}>
+        <Pressable
+          onPress={() => navigation.goBack()}
+          style={styles.backBtn}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
+          <Ionicons name="chevron-back" size={24} color={Brand.primary} />
+        </Pressable>
+        <Text style={styles.headerTitle}>{t('editProfile.title')}</Text>
+        <View style={styles.avatarSmall}>
+          <Text style={styles.avatarInitials}>
+            {displayName ? getInitials(displayName) : '?'}
+          </Text>
         </View>
       </View>
 
-      {/* ── Section 3: Medical Details ────────────────────────────────── */}
-      <SectionHeader number={3} label={t('editProfile.sectionMedical')} />
+      {profileQ.isLoading && (
+        <View style={styles.loadingBar}>
+          <ActivityIndicator size="small" color={Brand.primary} />
+        </View>
+      )}
 
-      <FieldLabel label={t('editProfile.bloodGroup')} />
-      <View style={styles.bgGrid}>
-        {BLOOD_GROUPS.map(bg => (
-          <Pressable
-            key={bg}
-            onPress={() => upd('bloodGroup', form.bloodGroup === bg ? '' : bg)}
-            style={[styles.bgCell, form.bloodGroup === bg && styles.bgCellActive]}
-            accessibilityRole="button"
-            accessibilityState={{ selected: form.bloodGroup === bg }}
-          >
-            <Text style={[styles.bgCellText, form.bloodGroup === bg && styles.bgCellTextActive]}>
-              {bg}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
+      >
+        {/* ── 1. Basic Info ──────────────────────────────────────────────── */}
+        <SectionHeader number={1} label={t('editProfile.sectionBasic')} />
+        <View style={styles.card}>
+          <FieldGroup label={t('onboarding.fullName')}>
+            <TextInput
+              style={styles.input}
+              value={form.fullName}
+              onChangeText={v => upd('fullName', v)}
+              placeholderTextColor={Colors.textMuted}
+            />
+          </FieldGroup>
 
-      <FieldLabel label={t('editProfile.nhisNumber')} />
-      <TextInput
-        style={styles.input}
-        value={form.nhis}
-        onChangeText={v => upd('nhis', v)}
-        placeholder={t('editProfile.nhisPlaceholder')}
-        placeholderTextColor={Colors.textMuted}
-        autoCapitalize="characters"
-      />
+          <View style={styles.cardDivider} />
 
-      <FieldLabel label={t('editProfile.allergies')} />
-      {form.allergies.length > 0 && (
-        <View style={styles.allergyList}>
-          {form.allergies.map((a, i) => (
-            <View key={i} style={styles.allergyChip}>
-              <Text style={styles.allergyChipText}>{a}</Text>
-              <Pressable onPress={() => removeAllergy(i)} hitSlop={8} accessibilityRole="button">
-                <Ionicons name="close" size={15} color={Brand.mutedTeal} />
+          <FieldGroup label={t('onboarding.phone')}>
+            <TextInput
+              style={styles.input}
+              value={form.phone}
+              onChangeText={v => upd('phone', v)}
+              keyboardType="phone-pad"
+              placeholderTextColor={Colors.textMuted}
+            />
+          </FieldGroup>
+
+          <View style={styles.cardDivider} />
+
+          <FieldGroup label={t('onboarding.dateOfBirth')}>
+            <DateInput value={form.dob} onChange={v => upd('dob', v)} />
+          </FieldGroup>
+
+          <View style={styles.cardDivider} />
+
+          <FieldGroup label={t('onboarding.language')}>
+            <View style={styles.langRow}>
+              {(['en', 'tw'] as PreferredLang[]).map(l => (
+                <Pressable
+                  key={l}
+                  onPress={() => upd('lang', l)}
+                  style={[styles.langChip, form.lang === l && styles.langChipActive]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: form.lang === l }}
+                >
+                  <Text style={[styles.langChipText, form.lang === l && styles.langChipTextActive]}>
+                    {l === 'en' ? 'English' : 'Twi'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </FieldGroup>
+
+          <View style={styles.cardDivider} />
+
+          <FieldGroup label={t('onboarding.conditions')}>
+            <ConditionMultiSelect
+              hint={t('onboarding.conditionsHint')}
+              selected={form.conditions}
+              onChange={v => upd('conditions', v)}
+            />
+          </FieldGroup>
+        </View>
+
+        {/* ── 2. Alert Thresholds ────────────────────────────────────────── */}
+        <View style={styles.thresholdsPanel}>
+          <SectionHeader number={2} label={t('editProfile.sectionThresholds')} accent />
+          <Text style={styles.thresholdsHint}>{t('onboarding.thresholdsHint')}</Text>
+          <View style={styles.thresholdGrid}>
+            {[
+              { label: t('editProfile.bpHighThreshold'), key: 'bpHigh' },
+              { label: t('editProfile.sugarHighMmol'), key: 'sugarHigh' },
+              { label: t('editProfile.spo2LowThreshold'), key: 'spo2Low' },
+              { label: t('editProfile.heartRateHigh'), key: 'hrHigh' },
+              { label: t('editProfile.heartRateLow'), key: 'hrLow' },
+              { label: t('editProfile.weightAlertDelta'), key: 'weightDelta' },
+            ].map(({ label, key }) => (
+              <View key={key} style={styles.thresholdGridItem}>
+                <Text style={styles.thresholdGridLabel}>{label}</Text>
+                <TextInput
+                  style={styles.thresholdInput}
+                  value={form[key as keyof FormState] as string}
+                  onChangeText={v => upd(key as keyof FormState, v as any)}
+                  keyboardType="decimal-pad"
+                  placeholderTextColor={Colors.textMuted}
+                />
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* ── 3. Medical Details ─────────────────────────────────────────── */}
+        <SectionHeader number={3} label={t('editProfile.sectionMedical')} />
+        <View style={styles.card}>
+          <FieldGroup label={t('editProfile.bloodGroup')}>
+            <View style={styles.bgGrid}>
+              {BLOOD_GROUPS.map(bg => (
+                <Pressable
+                  key={bg}
+                  onPress={() => upd('bloodGroup', form.bloodGroup === bg ? '' : bg)}
+                  style={[styles.bgCell, form.bloodGroup === bg && styles.bgCellActive]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: form.bloodGroup === bg }}
+                >
+                  <Text style={[styles.bgCellText, form.bloodGroup === bg && styles.bgCellTextActive]}>
+                    {bg}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </FieldGroup>
+
+          <View style={styles.cardDivider} />
+
+          <FieldGroup label={t('editProfile.nhisNumber')}>
+            <TextInput
+              style={styles.input}
+              value={form.nhis}
+              onChangeText={v => upd('nhis', v)}
+              placeholder={t('editProfile.nhisPlaceholder')}
+              placeholderTextColor={Colors.textMuted}
+              autoCapitalize="characters"
+            />
+          </FieldGroup>
+
+          <View style={styles.cardDivider} />
+
+          <FieldGroup label={t('editProfile.allergies')}>
+            {form.allergies.length > 0 && (
+              <View style={styles.allergyList}>
+                {form.allergies.map((a, i) => (
+                  <View key={i} style={styles.allergyChip}>
+                    <Text style={styles.allergyChipText}>{a}</Text>
+                    <Pressable onPress={() => removeAllergy(i)} hitSlop={8} accessibilityRole="button">
+                      <Ionicons name="close" size={15} color={Brand.mutedTeal} />
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            )}
+            <View style={styles.addAllergyRow}>
+              <TextInput
+                style={styles.addAllergyInput}
+                value={newAllergy}
+                onChangeText={setNewAllergy}
+                placeholder={t('editProfile.allergyPlaceholder')}
+                placeholderTextColor={Colors.textMuted}
+                onSubmitEditing={addAllergy}
+                returnKeyType="done"
+              />
+              <Pressable
+                style={[styles.addAllergyBtn, !newAllergy.trim() && styles.addAllergyBtnDisabled]}
+                onPress={addAllergy}
+                disabled={!newAllergy.trim()}
+                accessibilityRole="button"
+              >
+                <Ionicons name="add" size={20} color="#fff" />
               </Pressable>
             </View>
-          ))}
+          </FieldGroup>
         </View>
-      )}
-      <View style={styles.addAllergyRow}>
-        <TextInput
-          style={styles.addAllergyInput}
-          value={newAllergy}
-          onChangeText={setNewAllergy}
-          placeholder={t('editProfile.allergyPlaceholder')}
-          placeholderTextColor={Colors.textMuted}
-          onSubmitEditing={addAllergy}
-          returnKeyType="done"
-        />
-        <Pressable
-          style={[styles.addAllergyBtn, !newAllergy.trim() && styles.addAllergyBtnDisabled]}
-          onPress={addAllergy}
-          disabled={!newAllergy.trim()}
-          accessibilityRole="button"
-        >
-          <Ionicons name="add" size={20} color="#fff" />
-        </Pressable>
-      </View>
 
-      {/* ── Section 4: Medical History ────────────────────────────────── */}
-      <SectionHeader number={4} label={t('editProfile.sectionHistory')} />
-
-      <View style={styles.switchRow}>
-        <Text style={styles.switchLabel}>{t('editProfile.strokeHistory')}</Text>
-        <Switch
-          value={form.strokeHistory}
-          onValueChange={v => upd('strokeHistory', v)}
-          trackColor={{ true: Brand.primaryForm, false: Brand.borderForm }}
-          thumbColor={Colors.white}
-        />
-      </View>
-      {form.strokeHistory && (
-        <DateInput
-          label={t('editProfile.strokeLastDate')}
-          value={form.strokeLastDate}
-          onChange={v => upd('strokeLastDate', v)}
-        />
-      )}
-
-      <View style={[styles.switchRow, styles.switchRowDivider]}>
-        <Text style={styles.switchLabel}>{t('editProfile.fallHistory')}</Text>
-        <Switch
-          value={form.fallHistory}
-          onValueChange={v => upd('fallHistory', v)}
-          trackColor={{ true: Brand.primaryForm, false: Brand.borderForm }}
-          thumbColor={Colors.white}
-        />
-      </View>
-      {form.fallHistory && (
-        <DateInput
-          label={t('editProfile.fallLastDate')}
-          value={form.fallLastDate}
-          onChange={v => upd('fallLastDate', v)}
-        />
-      )}
-
-      <FieldLabel label={t('editProfile.pastSurgeries')} />
-      {form.surgeries.length === 0 && (
-        <Text style={styles.muted}>{t('editProfile.noSurgeries')}</Text>
-      )}
-      {form.surgeries.map((s, i) => (
-        <View key={i} style={styles.surgeryCard}>
-          <View style={{ flex: 1 }}>
-            <TextInput
-              style={styles.surgeryDescInput}
-              value={s.description}
-              onChangeText={v => patchSurgery(i, 'description', v)}
-              placeholder={t('editProfile.surgeryDescription')}
-              placeholderTextColor={Colors.textMuted}
-            />
-            <TextInput
-              style={styles.surgeryYearInput}
-              value={s.year}
-              onChangeText={v => patchSurgery(i, 'year', v)}
-              placeholder={t('editProfile.surgeryYear')}
-              placeholderTextColor={Colors.textMuted}
-              keyboardType="number-pad"
-              maxLength={4}
+        {/* ── 4. Medical History ─────────────────────────────────────────── */}
+        <SectionHeader number={4} label={t('editProfile.sectionHistory')} />
+        <View style={styles.card}>
+          <View style={[styles.switchRow]}>
+            <Text style={styles.switchLabel}>{t('editProfile.strokeHistory')}</Text>
+            <Switch
+              value={form.strokeHistory}
+              onValueChange={v => upd('strokeHistory', v)}
+              trackColor={{ true: Brand.primary, false: ROW_DIVIDER }}
+              thumbColor={Colors.white}
             />
           </View>
-          <Pressable onPress={() => removeSurgery(i)} hitSlop={8} accessibilityRole="button">
-            <Ionicons name="trash-outline" size={22} color={Colors.error} />
-          </Pressable>
+          {form.strokeHistory && (
+            <View style={styles.conditionalField}>
+              <DateInput
+                label={t('editProfile.strokeLastDate')}
+                value={form.strokeLastDate}
+                onChange={v => upd('strokeLastDate', v)}
+              />
+            </View>
+          )}
+
+          <View style={styles.cardDivider} />
+
+          <View style={styles.switchRow}>
+            <Text style={styles.switchLabel}>{t('editProfile.fallHistory')}</Text>
+            <Switch
+              value={form.fallHistory}
+              onValueChange={v => upd('fallHistory', v)}
+              trackColor={{ true: Brand.primary, false: ROW_DIVIDER }}
+              thumbColor={Colors.white}
+            />
+          </View>
+          {form.fallHistory && (
+            <View style={styles.conditionalField}>
+              <DateInput
+                label={t('editProfile.fallLastDate')}
+                value={form.fallLastDate}
+                onChange={v => upd('fallLastDate', v)}
+              />
+            </View>
+          )}
+
+          <View style={styles.cardDivider} />
+
+          <FieldGroup label={t('editProfile.pastSurgeries')}>
+            {form.surgeries.length === 0 && (
+              <Text style={styles.muted}>{t('editProfile.noSurgeries')}</Text>
+            )}
+            {form.surgeries.map((s, i) => (
+              <View key={i} style={styles.surgeryCard}>
+                <View style={{ flex: 1 }}>
+                  <TextInput
+                    style={styles.surgeryDescInput}
+                    value={s.description}
+                    onChangeText={v => patchSurgery(i, 'description', v)}
+                    placeholder={t('editProfile.surgeryDescription')}
+                    placeholderTextColor={Colors.textMuted}
+                  />
+                  <TextInput
+                    style={styles.surgeryYearInput}
+                    value={s.year}
+                    onChangeText={v => patchSurgery(i, 'year', v)}
+                    placeholder={t('editProfile.surgeryYear')}
+                    placeholderTextColor={Colors.textMuted}
+                    keyboardType="number-pad"
+                    maxLength={4}
+                  />
+                </View>
+                <Pressable onPress={() => removeSurgery(i)} hitSlop={8} accessibilityRole="button">
+                  <Ionicons name="trash-outline" size={22} color={Colors.error} />
+                </Pressable>
+              </View>
+            ))}
+            <Pressable
+              style={styles.addSurgeryBtn}
+              onPress={() => upd('surgeries', [...form.surgeries, { description: '', year: '' }])}
+              accessibilityRole="button"
+            >
+              <Ionicons name="add" size={18} color={Brand.primary} />
+              <Text style={styles.addSurgeryText}>{t('editProfile.addSurgery')}</Text>
+            </Pressable>
+          </FieldGroup>
         </View>
-      ))}
-      <Pressable
-        style={styles.addSurgeryBtn}
-        onPress={() => upd('surgeries', [...form.surgeries, { description: '', year: '' }])}
-        accessibilityRole="button"
-      >
-        <Ionicons name="add" size={18} color={Brand.primaryForm} />
-        <Text style={styles.addSurgeryText}>{t('editProfile.addSurgery')}</Text>
-      </Pressable>
 
-      {/* ── Section 5: Care Team ──────────────────────────────────────── */}
-      <SectionHeader number={5} label={t('editProfile.sectionCareTeam')} />
+        {/* ── 5. Care Team ───────────────────────────────────────────────── */}
+        <SectionHeader number={5} label={t('editProfile.sectionCareTeam')} />
+        <View style={styles.card}>
+          <FieldGroup label={t('editProfile.preferredHospital')}>
+            <TextInput
+              style={styles.input}
+              value={form.hospital}
+              onChangeText={v => upd('hospital', v)}
+              placeholder={t('editProfile.hospitalPlaceholder')}
+              placeholderTextColor={Colors.textMuted}
+            />
+          </FieldGroup>
 
-      <FieldLabel label={t('editProfile.preferredHospital')} />
-      <TextInput
-        style={styles.input}
-        value={form.hospital}
-        onChangeText={v => upd('hospital', v)}
-        placeholder={t('editProfile.hospitalPlaceholder')}
-        placeholderTextColor={Colors.textMuted}
-      />
+          <View style={styles.cardDivider} />
 
-      <FieldLabel label={t('editProfile.primaryDoctorName')} />
-      <TextInput
-        style={styles.input}
-        value={form.doctorName}
-        onChangeText={v => upd('doctorName', v)}
-        placeholder={t('editProfile.doctorNamePlaceholder')}
-        placeholderTextColor={Colors.textMuted}
-      />
+          <FieldGroup label={t('editProfile.primaryDoctorName')}>
+            <TextInput
+              style={styles.input}
+              value={form.doctorName}
+              onChangeText={v => upd('doctorName', v)}
+              placeholder={t('editProfile.doctorNamePlaceholder')}
+              placeholderTextColor={Colors.textMuted}
+            />
+          </FieldGroup>
 
-      <FieldLabel label={t('editProfile.primaryDoctorPhone')} />
-      <TextInput
-        style={styles.input}
-        value={form.doctorPhone}
-        onChangeText={v => upd('doctorPhone', v)}
-        placeholder={t('editProfile.doctorPhonePlaceholder')}
-        placeholderTextColor={Colors.textMuted}
-        keyboardType="phone-pad"
-      />
+          <View style={styles.cardDivider} />
 
-      {/* ── Save ──────────────────────────────────────────────────────── */}
-      {saveMut.isError && (
-        <Text style={styles.errorTxt}>{getApiErrorMessage(saveMut.error)}</Text>
-      )}
-      <Pressable
-        style={[styles.saveBtn, saveMut.isPending && styles.saveBtnDisabled]}
-        onPress={() => saveMut.mutate()}
-        disabled={saveMut.isPending}
-        accessibilityRole="button"
-      >
-        {saveMut.isPending ? (
-          <ActivityIndicator color={Colors.white} />
-        ) : (
-          <>
-            <Ionicons name="checkmark" size={20} color="#fff" />
-            <Text style={styles.saveBtnText}>{t('editProfile.saveChanges')}</Text>
-          </>
+          <FieldGroup label={t('editProfile.primaryDoctorPhone')}>
+            <TextInput
+              style={styles.input}
+              value={form.doctorPhone}
+              onChangeText={v => upd('doctorPhone', v)}
+              placeholder={t('editProfile.doctorPhonePlaceholder')}
+              placeholderTextColor={Colors.textMuted}
+              keyboardType="phone-pad"
+            />
+          </FieldGroup>
+        </View>
+
+        {/* ── Save ───────────────────────────────────────────────────────── */}
+        {saveMut.isError && (
+          <Text style={styles.errorTxt}>{getApiErrorMessage(saveMut.error)}</Text>
         )}
-      </Pressable>
-    </Screen>
+        <Pressable
+          style={[styles.saveBtn, saveMut.isPending && styles.saveBtnDisabled]}
+          onPress={() => saveMut.mutate()}
+          disabled={saveMut.isPending}
+          accessibilityRole="button"
+        >
+          {saveMut.isPending ? (
+            <ActivityIndicator color={Colors.white} />
+          ) : (
+            <>
+              <Ionicons name="checkmark" size={20} color="#fff" />
+              <Text style={styles.saveBtnText}>{t('editProfile.saveChanges')}</Text>
+            </>
+          )}
+        </Pressable>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -491,38 +564,20 @@ export default function EditProfileScreen() {
 
 function SectionHeader({ number, label, accent }: { number: number; label: string; accent?: boolean }) {
   return (
-    <View style={styles.sectionHeaderRow}>
-      <View style={[styles.sectionBadge, accent && styles.sectionBadgeAccent]}>
-        <Text style={styles.sectionBadgeNum}>{number}</Text>
+    <View style={sc.row}>
+      <View style={[sc.badge, accent && sc.badgeAccent]}>
+        <Text style={sc.badgeNum}>{number}</Text>
       </View>
-      <Text style={styles.sectionHeaderLabel}>{label}</Text>
+      <Text style={sc.label}>{label}</Text>
     </View>
   );
 }
 
-function FieldLabel({ label }: { label: string }) {
-  return <Text style={styles.fieldLabel}>{label}</Text>;
-}
-
-function ThresholdGridField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
+function FieldGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <View style={styles.thresholdGridItem}>
-      <Text style={styles.thresholdGridLabel}>{label}</Text>
-      <TextInput
-        style={styles.thresholdInput}
-        value={value}
-        onChangeText={onChange}
-        keyboardType="decimal-pad"
-        placeholderTextColor={Colors.textMuted}
-      />
+    <View style={fg.wrapper}>
+      <Text style={fg.label}>{label}</Text>
+      {children}
     </View>
   );
 }
@@ -530,101 +585,119 @@ function ThresholdGridField({
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  content: { padding: Spacing.xl, paddingBottom: Spacing['4xl'] },
-  loadingIndicator: { alignSelf: 'flex-start', marginBottom: Spacing.sm },
+  root: { flex: 1, backgroundColor: Brand.bgCream },
 
-  // Section headers
-  sectionHeaderRow: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginTop: 26,
-    marginBottom: 16,
+    paddingHorizontal: Spacing.lg,
+    height: 64,
+    backgroundColor: '#F5F1E5',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: ROW_DIVIDER,
   },
-  sectionBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    backgroundColor: Brand.primary,
+  backBtn: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 4,
+  },
+  headerTitle: {
+    flex: 1,
+    fontFamily: Fonts.heading,
+    fontSize: 18,
+    fontWeight: '700',
+    color: Brand.primary,
+  },
+  avatarSmall: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Brand.accentPeach,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sectionBadgeAccent: {
-    backgroundColor: '#9a5b14',
-  },
-  sectionBadgeNum: {
-    fontFamily: Fonts.heading,
-    fontSize: 15,
-    color: '#fff',
-  },
-  sectionHeaderLabel: {
-    fontFamily: Fonts.heading,
-    fontSize: 19,
-    color: Brand.primary,
+  avatarInitials: { fontFamily: Fonts.heading, fontSize: 13, color: Brand.primary },
+
+  loadingBar: {
+    paddingVertical: 8,
+    alignItems: 'center',
+    backgroundColor: Brand.bgCream,
   },
 
-  fieldLabel: {
-    fontFamily: Fonts.heading,
-    fontWeight: '700',
-    fontSize: 15,
-    color: Brand.primaryText,
-    marginTop: Spacing.md,
-    marginBottom: 7,
+  scrollContent: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.xl,
   },
 
-  // Inputs
-  input: {
-    height: 54,
-    borderWidth: 1,
-    borderColor: Brand.borderForm,
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    fontSize: 17,
-    fontFamily: Fonts.body,
-    color: Brand.inputText,
+  card: {
     backgroundColor: Colors.surface,
-    marginBottom: Spacing.xs,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    paddingHorizontal: Spacing.base,
+    marginBottom: Spacing.xl,
+    overflow: 'hidden',
+  },
+  cardDivider: {
+    height: 1,
+    backgroundColor: ROW_DIVIDER,
+    marginHorizontal: -Spacing.base,
+  },
+
+  input: {
+    height: 48,
+    borderWidth: 1,
+    borderColor: INPUT_BORDER,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    fontSize: 16,
+    fontFamily: Fonts.body,
+    color: Brand.primary,
+    backgroundColor: INPUT_BG,
+    marginBottom: 4,
   },
 
   // Language
-  langRow: { flexDirection: 'row', gap: 10, marginBottom: Spacing.sm },
+  langRow: { flexDirection: 'row', gap: 10, marginBottom: 4 },
   langChip: {
     flex: 1,
-    height: 54,
+    height: 48,
     borderWidth: 1,
-    borderColor: Brand.borderForm,
+    borderColor: INPUT_BORDER,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.surface,
+    backgroundColor: INPUT_BG,
   },
   langChipActive: {
-    backgroundColor: Brand.primaryForm,
-    borderColor: Brand.primaryForm,
+    backgroundColor: Brand.primary,
+    borderColor: Brand.primary,
   },
   langChipText: {
     fontFamily: Fonts.heading,
-    fontSize: 17,
-    color: Brand.primaryForm,
+    fontSize: 16,
+    color: Brand.primary,
   },
   langChipTextActive: { color: '#fff' },
 
   // Thresholds panel
   thresholdsPanel: {
-    backgroundColor: Brand.bgWarmCard,
+    backgroundColor: '#FFF8EC',
     borderWidth: 1,
-    borderColor: Brand.borderCard,
-    borderRadius: 18,
+    borderColor: '#FFE6D5',
+    borderRadius: BorderRadius.lg,
     padding: 20,
-    marginTop: 26,
+    marginBottom: Spacing.xl,
   },
   thresholdsHint: {
     fontFamily: Fonts.body,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 14,
+    lineHeight: 20,
     color: '#7a6230',
     marginBottom: 16,
-    marginTop: -8,
+    marginTop: -4,
   },
   thresholdGrid: {
     flexDirection: 'row',
@@ -633,21 +706,20 @@ const styles = StyleSheet.create({
   },
   thresholdGridItem: { width: '47%' },
   thresholdGridLabel: {
-    fontFamily: Fonts.heading,
-    fontWeight: '700',
+    fontFamily: Fonts.bodySemiBold,
     fontSize: 13,
-    color: Brand.primaryText,
+    color: Brand.primary,
     marginBottom: 6,
   },
   thresholdInput: {
-    height: 50,
+    height: 48,
     borderWidth: 1,
     borderColor: '#e3cfa0',
     borderRadius: 10,
     paddingHorizontal: 14,
-    fontSize: 17,
+    fontSize: 16,
     fontFamily: Fonts.body,
-    color: Brand.inputText,
+    color: Brand.primary,
     backgroundColor: Colors.surface,
   },
 
@@ -655,27 +727,27 @@ const styles = StyleSheet.create({
   bgGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 9,
-    marginBottom: Spacing.sm,
+    gap: 8,
+    marginBottom: 4,
   },
   bgCell: {
     width: '22%',
-    height: 48,
+    height: 46,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: Brand.borderForm,
-    backgroundColor: Colors.surface,
+    borderColor: INPUT_BORDER,
+    backgroundColor: INPUT_BG,
     alignItems: 'center',
     justifyContent: 'center',
   },
   bgCellActive: {
-    backgroundColor: Brand.primaryForm,
-    borderColor: Brand.primaryForm,
+    backgroundColor: Brand.primary,
+    borderColor: Brand.primary,
   },
   bgCellText: {
     fontFamily: Fonts.heading,
-    fontSize: 16,
-    color: Brand.primaryForm,
+    fontSize: 15,
+    color: Brand.primary,
   },
   bgCellTextActive: { color: '#fff' },
 
@@ -689,47 +761,47 @@ const styles = StyleSheet.create({
   allergyChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#eef5f6',
+    gap: 6,
+    backgroundColor: '#EEF5F6',
     borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   allergyChipText: {
     fontFamily: Fonts.heading,
-    fontSize: 15,
+    fontSize: 14,
     color: Brand.primary,
   },
   addAllergyRow: {
     flexDirection: 'row',
     alignItems: 'center',
     position: 'relative',
-    marginBottom: Spacing.lg,
+    marginBottom: 4,
   },
   addAllergyInput: {
     flex: 1,
-    height: 54,
+    height: 48,
     borderWidth: 1,
-    borderColor: Brand.borderForm,
+    borderColor: INPUT_BORDER,
     borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingRight: 60,
-    fontSize: 17,
+    paddingHorizontal: 14,
+    paddingRight: 56,
+    fontSize: 16,
     fontFamily: Fonts.body,
-    color: Brand.inputText,
-    backgroundColor: Colors.surface,
+    color: Brand.primary,
+    backgroundColor: INPUT_BG,
   },
   addAllergyBtn: {
     position: 'absolute',
-    right: 8,
-    width: 38,
-    height: 38,
+    right: 6,
+    width: 36,
+    height: 36,
     borderRadius: 9,
-    backgroundColor: Brand.primaryForm,
+    backgroundColor: Brand.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  addAllergyBtnDisabled: { opacity: 0.4 },
+  addAllergyBtnDisabled: { opacity: 0.35 },
 
   // Toggles
   switchRow: {
@@ -739,16 +811,15 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     minHeight: MinTapTarget.neoCare,
   },
-  switchRowDivider: {
-    borderTopWidth: 1,
-    borderTopColor: '#f3ead6',
-  },
   switchLabel: {
     fontFamily: Fonts.bodyMedium,
-    fontSize: 17,
+    fontSize: 16,
     color: Brand.primary,
     flex: 1,
     marginRight: Spacing.base,
+  },
+  conditionalField: {
+    paddingBottom: 10,
   },
 
   // Surgeries
@@ -756,23 +827,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: Colors.surface,
+    backgroundColor: INPUT_BG,
     borderWidth: 1,
-    borderColor: Brand.borderWarm,
-    borderRadius: 14,
+    borderColor: INPUT_BORDER,
+    borderRadius: 12,
     padding: 14,
-    paddingHorizontal: 16,
     marginBottom: 10,
   },
   surgeryDescInput: {
     fontFamily: Fonts.heading,
-    fontSize: 17,
+    fontSize: 16,
     color: Brand.primary,
     paddingVertical: 2,
   },
   surgeryYearInput: {
     fontFamily: Fonts.body,
-    fontSize: 15,
+    fontSize: 14,
     color: Brand.mutedTeal,
     paddingVertical: 2,
     marginTop: 2,
@@ -782,39 +852,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    height: 54,
+    height: 48,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: Brand.borderForm,
+    borderColor: Brand.primary,
     borderRadius: 12,
-    marginBottom: Spacing.sm,
+    marginTop: 4,
+    marginBottom: 6,
+    opacity: 0.7,
   },
   addSurgeryText: {
     fontFamily: Fonts.heading,
-    fontSize: 16,
-    color: Brand.primaryForm,
+    fontSize: 15,
+    color: Brand.primary,
   },
 
   // Save button
   saveBtn: {
-    height: 58,
-    backgroundColor: Brand.primaryForm,
-    borderRadius: 14,
+    height: 56,
+    backgroundColor: Brand.primary,
+    borderRadius: BorderRadius.lg,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    marginTop: Spacing['2xl'],
+    marginTop: Spacing.xl,
     shadowColor: Brand.primary,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
     shadowRadius: 8,
-    elevation: 2,
+    elevation: 3,
   },
   saveBtnDisabled: { opacity: 0.5 },
   saveBtnText: {
     fontFamily: Fonts.heading,
-    fontSize: 18,
+    fontSize: 17,
     color: '#fff',
   },
 
@@ -830,5 +902,51 @@ const styles = StyleSheet.create({
     color: Colors.error,
     marginTop: Spacing.md,
     textAlign: 'center',
+  },
+});
+
+const sc = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: Spacing.md,
+  },
+  badge: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: Brand.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeAccent: {
+    backgroundColor: '#9a5b14',
+  },
+  badgeNum: {
+    fontFamily: Fonts.heading,
+    fontSize: 14,
+    color: '#fff',
+  },
+  label: {
+    fontFamily: Fonts.heading,
+    fontSize: 18,
+    fontWeight: '700',
+    color: Brand.primary,
+  },
+});
+
+const fg = StyleSheet.create({
+  wrapper: {
+    paddingVertical: Spacing.base,
+  },
+  label: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 13,
+    fontWeight: '600',
+    color: Brand.mutedTeal,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 8,
   },
 });
