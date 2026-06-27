@@ -8,6 +8,7 @@ import {
   StatusBar,
   ActivityIndicator,
   Share,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -242,7 +243,9 @@ export default function NeoSeniorSummaryScreen() {
     try {
       const idToken = useAuthStore.getState().idToken ?? '';
       const uri = await downloadSummaryPdf(userId, days, idToken);
-      await Share.share({ url: uri, message: 'Neovot Health Summary' });
+      if (Platform.OS !== 'web') {
+        await Share.share({ url: uri, message: 'Neovot Health Summary' });
+      }
     } catch (e) {
       setErrorMsg(getApiErrorMessage(e));
     } finally {
